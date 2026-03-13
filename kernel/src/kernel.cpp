@@ -1,0 +1,128 @@
+/*
+ * kernel.cpp
+ *
+ * ZeroM2M
+ * Copyright (C) 2026 ZeroM2M Authors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
+ */
+#include "zerom2m/kernel.h"
+#include "zerom2m/blinktask.h"
+#include "zerom2m/httpserver.h"
+
+// Network configuration
+#define USE_DHCP // For static IP comment this line
+
+#ifndef USE_DHCP
+static const u8 IPAddress[]      = {192, 168, 0, 250};
+static const u8 NetMask[]        = {255, 255, 255, 0};
+static const u8 DefaultGateway[] = {192, 168, 0, 1};
+static const u8 DNSServer[]      = {192, 168, 0, 1};
+#endif
+
+// Makefile CPPFLAGS
+#ifndef COMMIT_HASH
+#define COMMIT_HASH "unknown"
+#endif
+
+#ifndef REBOOTMAGIC
+#define REBOOTMAGIC "reboot"
+#endif
+
+#ifndef USERBAUD
+#define USERBAUD 115200
+#endif
+
+namespace zerom2m
+{
+
+namespace
+{
+const char            FromKernel[]    = "kernel";
+volatile ShutdownMode shutdownRequest = ShutdownMode::None;
+
+void SetReboot() { shutdownRequest = ShutdownMode::Reboot; }
+
+} // namespace
+
+Kernel::Kernel()
+    : screen_(options_.GetWidth(), options_.GetHeight())
+    , serial_(&interrupt_)
+    , timer_(&interrupt_)
+    , logger_(options_.GetLogLevel(), &timer_)
+    , usbHci_(&interrupt_, &timer_)
+#ifndef USE_DHCP
+    , net_(IPAddress, NetMask, DefaultGateway, DNSServer)
+#endif
+{
+    led_.Off();              // bootloader turns it on
+    led_.Blink(3, 200, 200); // show we are alive
+}
+
+Kernel::~Kernel() {}
+
+bool Kernel::Initialize()
+{
+    bool ok       = true;
+    bool timerOk  = false;
+    bool loggerOk = false;
+
+    if (ok) ok = screen_.Initialize();
+    if (ok) ok = serial_.Initialize(USERBAUD);
+    if (ok) ok = interrupt_.Initialize();
+    if (ok) {
+        ok      = timer_.Initialize();
+        timerOk = ok;
+    }
+    if (ok) {
+        CDevice *logDevice = deviceNameService_.GetDevice(options_.GetLogDevice(), false);
+        if (logDevice == nullptr) logDevice = &screen_;
+        ok = logger_.Initialize(logDevice);
+        if (ok) {
+            loggerOk = true;
+            logger_.Write(FromKernel, LogNotice, "ZeroM2M Kernel '%s'", COMMIT_HASH);
+            logger_.Write(FromKernel, LogNotice, "Compile time: " __DATE__ " " __TIME__);
+            logger_.Write(FromKernel,
+                          LogNotice,
+                          "Logger initialized with log level %u",
+                          options_.GetLogLevel());
+        }
+    }
+
+    // TODO: Add Wifi/usb ethernet connection
+    // if (ok) ok = usbHci_.Initialize();
+    // if (ok) ok = net_.Initialize();
+
+    if (!ok && timerOk && loggerOk) {
+        logger_.Write(FromKernel, LogError, "Initialization failed");
+        timer_.MsDelay(1000);
+    }
+    return ok;
+}
+
+ShutdownMode Kernel::Run()
+{
+    logger_.Write(FromKernel, LogDebug, "Running kernel");
+    logger_.Write(FromKernel, LogDebug, "Setting Reboot Magic to '%s'", REBOOTMAGIC);
+    serial_.RegisterMagicReceivedHandler(REBOOTMAGIC, SetReboot);
+
+    CString ip;
+    net_.GetConfig()->GetIPAddress()->Format(&ip);
+    logger_.Write(FromKernel, LogNotice, "HTTP server listening at http://%s/", (const char *)ip);
+
+    new HttpServer(&net_, &led_);
+    new BlinkTask(&led_, 1000);
+
+    while (true) {
+        scheduler_.Yield();
+        if (shutdownRequest != ShutdownMode::None) {
+            logger_.Write(FromKernel, LogNotice, "Shutdown requested: %d", shutdownRequest);
+            timer_.MsDelay(1000);
+            return shutdownRequest;
+        }
+    }
+    return ShutdownMode::Halt;
+}
+
+} // namespace zerom2m

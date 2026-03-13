@@ -1,0 +1,19 @@
+# Enable 64-bit mode (AArch64)
+arm_64bit=1
+
+# Physical memory address to load the kernel
+kernel_address=0x80000
+
+# Disable temporary turbo during boot
+initial_turbo=0
+
+# Enable UART for debugging (optional but recommended)
+enable_uart=1
+
+# No splash screen, boot immediately
+disable_splash=1
+boot_delay=0
+
+# Board-specific kernel for Zero 2 W (Pi 2/3-class SoC)
+[pi02]
+kernel=kernel8.img
