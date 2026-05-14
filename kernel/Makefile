@@ -19,7 +19,12 @@ LIBS := \
 	$(CIRCLE_DIR)/lib/fs/libfs.a \
 	$(CIRCLE_DIR)/lib/net/libnet.a \
 	$(CIRCLE_DIR)/lib/sched/libsched.a \
-	$(CIRCLE_DIR)/lib/sound/libsound.a
+	$(CIRCLE_DIR)/lib/sound/libsound.a \
+	$(CIRCLE_DIR)/addon/SDCard/libsdcard.a \
+	$(CIRCLE_DIR)/addon/fatfs/libfatfs.a \
+	$(CIRCLE_DIR)/addon/wlan/libwlan.a \
+	$(CIRCLE_DIR)/addon/wlan/hostap/wpa_supplicant/libwpa_supplicant.a
+
 
 # CPP Flags
 COMMIT_HASH := $(shell git rev-parse --short=10 HEAD)

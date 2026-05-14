@@ -5,3 +5,6 @@ COPYING.linux
 *.elf
 *.dat
 *.img
+*.clm_blob
+*.txt
+wpa_supplicant.conf

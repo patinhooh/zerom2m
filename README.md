@@ -79,8 +79,10 @@ During the build process, this file is symlinked into the Circle directory as `t
 
 ### Network Configuration
 
-Network settings are currently defined directly in the kernel source file [kernel.cpp](kernel/src/kernel.cpp#L14).  
+Network settings are currently defined directly in the kernel source file [kernel.cpp](kernel/src/kernel.cpp#L21).  
 The USE_DHCP macro controls whether the system obtains its network configuration automatically via DHCP or uses the static IP parameters defined in the same file.
+
+An example Wi-Fi configuration file is provided at [boot/wpa_supplicant.example.conf](boot/wpa_supplicant.example.conf). Copy it to `boot/wpa_supplicant.conf` and edit the SSID/PSK or other network parameters as needed for your network.
 
 ### cmdline.txt
 
@@ -147,7 +149,7 @@ The [Root Makefile](Makefile) is the **entry point for the entire build system**
 | `circle` | Builds the Circle bare-metal framework |
 | `flash` \* | Flashes the built kernel to the Raspberry Pi via UART |
 | `monitor-<terminal>` \*\* | Opens a serial terminal to the Raspberry Pi for logs and interaction |
-| `submodules` | Initializes the Circle submodule if not already present |
+| `submodules` | Initializes the Circle submodules if not already present |
 | `clean` | Removes all build artifacts |
 | `clean-circle` | Cleans Circle's build output |
 | `clean-kernel` | Cleans the kernel's build output |
@@ -193,7 +195,7 @@ It supports two build modes:
 | `zerom2m` | Builds the ZeroM2M kernel and prepares it for SD card deployment |
 | `bootloader` | Builds a bootloader that allows kernel switching without SD card access |
 | `cp` | Copies firmware, config, and kernel/bootloader files to SD card |
-| `firmware` | Downloads official Raspberry Pi firmware files |
+| `firmware` | Downloads firmware files |
 | `clean-zerom2m` | Removes ZeroM2M kernel build artifacts |
 | `clean-bootloader` | Removes bootloader build artifacts |
 | `clean-firmware` | Removes downloaded firmware files |
@@ -223,6 +225,13 @@ make
 make -j$(nproc)
 ```
 
+Go to the boot directory and copy the example Wi-Fi configuration, adjust the network settings as needed:
+
+```bash
+cd boot
+cp wpa_supplicant.example.conf wpa_supplicant.conf
+```
+
 At this point, you have two possible workflows depending on whether you want to deploy the kernel directly or work with the bootloader for development.
 
 ### Option 1: Deploying the Kernel
@@ -230,7 +239,7 @@ At this point, you have two possible workflows depending on whether you want to 
 Prepare the boot files:
 
 ```bash
-cd boot
+# from the boot directory
 make zerom2m
 ```
 
@@ -247,7 +256,7 @@ Eject the SD card and insert it into the Raspberry Pi to boot
 Prepare the boot files:
 
 ```bash
-cd boot
+# from the boot directory
 make bootloader
 ```
 
