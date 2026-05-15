@@ -39,7 +39,7 @@ cd boot
 cp wpa_supplicant.example.conf wpa_supplicant.conf
 ```
 
-At this point, you have two possible workflows depending on whether you want to deploy the kernel directly or work with the bootloader for development.
+At this point, you have three possible workflows depending on whether you want to deploy the kernel directly or work with the bootloader for development.
 
 ### Option 1: Deploying the Kernel
 
