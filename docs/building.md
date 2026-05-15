@@ -1,6 +1,6 @@
 # Building <!-- omit from toc -->
 
-[Back to README](../README.md)
+[Back to README](../README.md#docs)
 
 ## Table of Contents <!-- omit from toc -->
 
