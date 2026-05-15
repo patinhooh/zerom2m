@@ -1,8 +1,21 @@
-# QEMU Setup
+# QEMU Setup <!-- omit from toc -->
+
+[Back to README](../README.md#docs)
+
+## Table of Contents <!-- omit from toc -->
+
+- [Prerequisites](#prerequisites)
+- [Build QEMU with the Circle Patch](#build-qemu-with-the-circle-patch)
+- [Build with QEMU\_SAFE](#build-with-qemu_safe)
+- [Create the SD Card Image](#create-the-sd-card-image)
+- [Run QEMU](#run-qemu)
+- [Access the HTTP Server](#access-the-http-server)
 
 ## Prerequisites
 
-You need `fdisk`, `mkfs.vfat`, and `libslirp` (standard on most Linux distros), plus a patched build of QEMU (see below).
+You will also need `libslirp` for `--enable-slirp`, plus `fdisk` and `mkfs.vfat` for creating the SD card image, and a patched build of QEMU (see below).
+
+Refer to the official QEMU Linux host requirements for build dependencies: <https://wiki.qemu.org/Hosts/Linux>.
 
 ## Build QEMU with the Circle Patch
 
