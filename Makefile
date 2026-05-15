@@ -16,16 +16,28 @@ circle: $(CIRCLE_DIR)/Config.mk
 	@echo ">>>> Building Circle core"
 	cd $(CIRCLE_DIR) && ./makeall $(MAKEFLAGS)
 
+	@echo
+	@echo ">>>> Building Circle addons"
+	@echo ">>>> Building SDCard addon"
+	cd $(CIRCLE_DIR)/addon/SDCard && make $(MAKEFLAGS)
+	@echo ">>>> Building FATFS addon"
+	cd $(CIRCLE_DIR)/addon/fatfs && make $(MAKEFLAGS)
+	@echo ">>>> Building Wlan addon"
+	cd $(CIRCLE_DIR)/addon/wlan && ./makeall --nosample $(MAKEFLAGS)
+
 $(CIRCLE_DIR)/Config.mk: Config.mk submodules
 	@echo
 	@echo ">>>> Configuring Circle core"
-	@if [ -e "$@" ]; then \
-		if [ -L "$@" ] && [ "$$(readlink -f $@)" = "$(CURDIR)/Config.mk" ]; then \
+	@if [ -L "$@" ]; then \
+		if [ "$$(readlink -f "$@")" = "$(CURDIR)/Config.mk" ]; then \
 			echo "Config.mk symlink already exists and is correct: $@"; \
 		else \
 			echo "Error: $@ exists but is not the correct symlink"; \
 			exit 1; \
 		fi \
+	elif [ -e "$@" ]; then \
+		echo "Error: $@ exists and is not a symlink"; \
+		exit 1; \
 	else \
 		echo "Creating symlink for Config.mk: $@ -> $(CURDIR)/Config.mk"; \
 		ln -s "$(CURDIR)/Config.mk" "$@"; \
@@ -43,8 +55,9 @@ submodules:
 	@if [ -d "$(CIRCLE_DIR)" ]; then \
 		echo "Submodule already initialized: $(CIRCLE_DIR)"; \
 	else \
-		echo "Initializing Circle submodule..."; \
+		echo "Initializing Circle submodules..."; \
 		git submodule update --init $(CIRCLE_DIR); \
+		cd $(CIRCLE_DIR)/addon/wlan/hostap && git submodule update --init; \
 	fi
 
 # Kernel

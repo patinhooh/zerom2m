@@ -10,18 +10,22 @@
 #pragma once
 
 #include <circle/actled.h>
-#include <circle/devicenameservice.h>
-#include <circle/exceptionhandler.h>
-#include <circle/interrupt.h>
 #include <circle/koptions.h>
-#include <circle/logger.h>
-#include <circle/net/netsubsystem.h>
-#include <circle/sched/scheduler.h>
+#include <circle/devicenameservice.h>
 #include <circle/screen.h>
 #include <circle/serial.h>
+#include <circle/exceptionhandler.h>
+#include <circle/interrupt.h>
 #include <circle/timer.h>
-#include <circle/types.h>
+#include <circle/logger.h>
+#include <circle/sched/scheduler.h>
 #include <circle/usb/usbhcidevice.h>
+#include <SDCard/emmc.h>
+#include <fatfs/ff.h>
+#include <wlan/bcm4343.h>
+#include <circle/net/netsubsystem.h>
+#include <wlan/hostap/wpa_supplicant/wpasupplicant.h>
+#include <circle/types.h>
 
 namespace zerom2m
 {
@@ -74,9 +78,13 @@ private:
     CInterruptSystem   interrupt_;
     CTimer             timer_;
     CLogger            logger_;
-    CUSBHCIDevice      usbHci_;
     CScheduler         scheduler_;
+    CUSBHCIDevice      usbHci_;
+    CEMMCDevice        emmc_;
+    FATFS              fileSystem_;
+    CBcm4343Device     wlan_;
     CNetSubSystem      net_;
+    CWPASupplicant     wpaSupplicant_;
 };
 
 } // namespace zerom2m
