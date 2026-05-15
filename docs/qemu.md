@@ -1,4 +1,15 @@
-# QEMU Setup
+# QEMU Setup <!-- omit from toc -->
+
+[Back to README](../README.md)
+
+## Table of Contents <!-- omit from toc -->
+
+- [Prerequisites](#prerequisites)
+- [Build QEMU with the Circle Patch](#build-qemu-with-the-circle-patch)
+- [Build with QEMU\_SAFE](#build-with-qemu_safe)
+- [Create the SD Card Image](#create-the-sd-card-image)
+- [Run QEMU](#run-qemu)
+- [Access the HTTP Server](#access-the-http-server)
 
 ## Prerequisites
 
