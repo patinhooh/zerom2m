@@ -106,7 +106,10 @@ bool Kernel::Initialize()
 #endif
         }
     }
+#ifdef QEMU_SAFE
+    // Only using usb in QEMU for now.
     if (ok) ok = usbHci_.Initialize();
+#endif
     if (ok) ok = emmc_.Initialize();
     if (ok) {
         if (f_mount(&fileSystem_, DRIVE, 1) != FR_OK) {
