@@ -28,6 +28,8 @@ static const u8 DNSServer[]      = {192, 168, 0, 1};
 #endif
 
 // Makefile CPPFLAGS
+// QEMU_SAFE, QEMU safe mode skips hardware-specific modules.
+
 #ifndef COMMIT_HASH
 #define COMMIT_HASH "unknown"
 #endif
@@ -62,6 +64,8 @@ Kernel::Kernel()
     , wlan_(FIRMWARE_PATH)
 #ifndef USE_DHCP
     , net_(IPAddress, NetMask, DefaultGateway, DNSServer)
+#elif defined(QEMU_SAFE)
+    , net_(0, 0, 0, 0, DEFAULT_HOSTNAME, NetDeviceTypeEthernet)
 #else
     , net_(0, 0, 0, 0, DEFAULT_HOSTNAME, NetDeviceTypeWLAN)
 #endif
@@ -84,7 +88,6 @@ bool Kernel::Initialize()
     if (ok) ok = interrupt_.Initialize();
     if (ok) ok = timer_.Initialize();
     if (ok) timerOk = ok;
-
     if (ok) {
         CDevice *logDevice = deviceNameService_.GetDevice(options_.GetLogDevice(), false);
         if (logDevice == nullptr) logDevice = &screen_;
@@ -97,32 +100,33 @@ bool Kernel::Initialize()
                           LogNotice,
                           "Logger initialized with log level %u",
                           options_.GetLogLevel());
+#ifdef QEMU_SAFE
+            logger_.Write(
+                FromKernel, LogNotice, "QEMU_SAFE mode: some hardware modules where disabled");
+#endif
         }
     }
-
-    // TODO: initialize USB host controller, if we want to support USB devices.
-    // if (ok) ok = usbHci_.Initialize();
-
+    if (ok) ok = usbHci_.Initialize();
     if (ok) ok = emmc_.Initialize();
-
     if (ok) {
         if (f_mount(&fileSystem_, DRIVE, 1) != FR_OK) {
             logger_.Write(FromKernel, LogError, "Cannot mount drive: %s", DRIVE);
             ok = false;
         }
     }
-
+#ifndef QEMU_SAFE
     if (ok) ok = wlan_.Initialize();
     if (ok) logger_.Write(FromKernel, LogNotice, "WLAN driver initialized");
-
 #ifdef USE_OPEN_NET
     if (ok) ok = wlan_.JoinOpenNet(USE_OPEN_NET);
-#endif
+#endif // USE_OPEN_NET
+#endif // !QEMU_SAFE
 
     if (ok) ok = net_.Initialize(FALSE); // FALSE = don't block waiting for link
+
     if (ok) logger_.Write(FromKernel, LogNotice, "Network subsystem initialized");
 
-#ifndef USE_OPEN_NET
+#if !defined(QEMU_SAFE) && !defined(USE_OPEN_NET)
     if (ok) ok = wpaSupplicant_.Initialize();
     if (ok) logger_.Write(FromKernel, LogNotice, "WPA supplicant started");
 #endif
@@ -146,7 +150,9 @@ ShutdownMode Kernel::Run()
         scheduler_.MsSleep(100);
     }
 
+#ifndef QEMU_SAFE
     wlan_.DumpStatus();
+#endif
 
     CString ip;
     net_.GetConfig()->GetIPAddress()->Format(&ip);

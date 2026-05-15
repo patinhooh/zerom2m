@@ -92,3 +92,6 @@ monitor-minicom:
 
 monitor-picocom:
 	$(MAKE) -C $(KERNEL_DIR) monitor-picocom
+
+qemu:
+	$(MAKE) -C $(KERNEL_DIR) qemu
