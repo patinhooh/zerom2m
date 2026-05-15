@@ -13,7 +13,9 @@
 
 ## Prerequisites
 
-You need `fdisk`, `mkfs.vfat`, and `libslirp` (standard on most Linux distros), plus a patched build of QEMU (see below).
+You will also need `libslirp` for `--enable-slirp`, plus `fdisk` and `mkfs.vfat` for creating the SD card image, and a patched build of QEMU (see below).
+
+Refer to the official QEMU Linux host requirements for build dependencies: <https://wiki.qemu.org/Hosts/Linux>.
 
 ## Build QEMU with the Circle Patch
 
