@@ -35,6 +35,9 @@ USERBAUD = 115200
 # Requires rebuilding bootloader and redoing the SD Card setup if changed
 FLASHBAUD = 921600
 
+# Path to the Circle-patched QEMU binary
+#QEMU_BINARY = /path/to/qemu/build/qemu-system-aarch64
+
 # Additional custom configuration options can be added here as needed.
 # Example:
 # MAKEFLAGS += -j$(shell nproc)
@@ -106,7 +109,8 @@ DEFINE += -DARM_ALLOW_MULTI_CORE
 
 # QEMU support
 #
-# Required when running under QEMU.
+# Atleast QEMU_SAFE is required when running under QEMU.
+#DEFINE += -DQEMU_SAFE
 #DEFINE += -DNO_SDHOST
 #DEFINE += -DNO_SCREEN_DMA_BURST_LENGTH
 # Needed only for 32-bit QEMU builds

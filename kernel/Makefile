@@ -76,3 +76,6 @@ monitor-minicom:
 
 # Using circle monitor
 monitor-putty: monitor
+
+qemu: $(TARGET).img
+	@../scripts/qemu.sh $<
