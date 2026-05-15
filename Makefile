@@ -72,7 +72,8 @@ clean: clean-circle clean-kernel
 clean-circle: submodules
 	@echo
 	@echo "\n>>>> Cleaning Circle"
-	cd $(CIRCLE_DIR) && ./makeall clean $(MAKEFLAGS)
+	@cd $(CIRCLE_DIR) && ./makeall clean $(MAKEFLAGS)
+	@rm "$(CIRCLE_DIR)/Config.mk"
 
 clean-kernel:
 	@echo
