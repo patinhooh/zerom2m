@@ -109,8 +109,7 @@ DEFINE += -DARM_ALLOW_MULTI_CORE
 
 # QEMU support
 #
-# Atleast QEMU_SAFE is required when running under QEMU.
-#DEFINE += -DQEMU_SAFE
+# Required when running under QEMU.
 #DEFINE += -DNO_SDHOST
 #DEFINE += -DNO_SCREEN_DMA_BURST_LENGTH
 # Needed only for 32-bit QEMU builds

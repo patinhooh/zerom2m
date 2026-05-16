@@ -15,15 +15,14 @@ using zerom2m::ShutdownMode;
 
 int main(void)
 {
-    Kernel Kernel;
-    if (!Kernel.Initialize()) {
-        // XXX: Rebooting if kernel fails to initialize
-        reboot();
-        return EXIT_REBOOT;
+    Kernel kernel;
+    if (!kernel.Initialize()) {
+        halt();
+        return EXIT_HALT;
     }
 
-    ShutdownMode ShutdownMode = Kernel.Run();
-    switch (ShutdownMode) {
+    ShutdownMode shutdown = kernel.Run();
+    switch (shutdown) {
         case ShutdownMode::Reboot:
             reboot();
             return EXIT_REBOOT;

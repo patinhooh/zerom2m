@@ -1,12 +1,17 @@
 #!/bin/bash
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CONFIG_MK="$SCRIPT_DIR/../Config.mk"
-KERNEL_PATH="${1:-$SCRIPT_DIR/../kernel/build/kernel8.img}"
 
+CONFIG_MK="$SCRIPT_DIR/../Config.mk"
 if [ -f "$CONFIG_MK" ]; then
     QEMU_BINARY=$(grep -E '^\s*QEMU_BINARY\s*=' "$CONFIG_MK" | sed 's/.*=\s*//' | tail -1)
-    QEMU_BINARY=$(eval echo "$QEMU_BINARY")
+    QEMU_BINARY="${QEMU_BINARY/#\~/$HOME}"
+fi
+
+KERNEL_PATH="${1:-$SCRIPT_DIR/../kernel/build/kernel8.img}"
+if [ ! -f "$KERNEL_PATH" ]; then
+    echo "Error: kernel image not found at $KERNEL_PATH"
+    exit 1
 fi
 
 if [ -z "$QEMU_BINARY" ]; then
