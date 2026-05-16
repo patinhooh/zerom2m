@@ -6,7 +6,7 @@
 
 - [Prerequisites](#prerequisites)
 - [Build QEMU with the Circle Patch](#build-qemu-with-the-circle-patch)
-- [Build with QEMU\_SAFE](#build-with-qemu_safe)
+- [Configure the project to be QEMU-safe](#configure-the-project-to-be-qemu-safe)
 - [Create the SD Card Image](#create-the-sd-card-image)
 - [Run QEMU](#run-qemu)
 - [Access the HTTP Server](#access-the-http-server)
@@ -56,12 +56,19 @@ Then set the full path to your patched QEMU binary:
 QEMU_BINARY = /path/to/qemu/build/qemu-system-aarch64
 ```
 
-## Build with QEMU_SAFE
+## Configure the project to be QEMU-safe
 
-Uncomment the flag on your [Config.mk](../Config.mk) before building:
+Set the [boot/kernel.cfg](boot/kernel.cfg) to the following:
 
-```makefile
-DEFINE += -DQEMU_SAFE
+```cfg
+[network]
+mode=ethernet;
+
+[http]
+port=80
+
+[system]
+hostname=zerom2mQEMU
 ```
 
 This disables hardware-specific modules that won't work in QEMU:

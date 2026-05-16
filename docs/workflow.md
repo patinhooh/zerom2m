@@ -32,10 +32,17 @@ make
 make -j$(nproc)
 ```
 
-Go to the boot directory and copy the example Wi-Fi configuration, adjust the network settings as needed:
+Go to the boot directory and edit the kernel configurations:
 
 ```bash
 cd boot
+# Edit the configuration file if needed
+nano zerom2m.cfg
+```
+
+If using Wi-Fi, adjust the network settings as needed:
+
+```bash
 cp wpa_supplicant.example.conf wpa_supplicant.conf
 ```
 

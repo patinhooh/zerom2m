@@ -63,18 +63,23 @@ To configure the project, copy `Config.example.mk` to `Config.mk` and adjust the
 
 During the build process, this file is symlinked into the Circle directory as `third_party/circle/Config.mk`. This allows both Circle and the project to use the same configuration file for building and runtime settings remain consistent.
 
-### Network Configuration
+### kernel.cfg
 
-IP settings live in the kernel source file [kernel.cpp](kernel/src/kernel.cpp).  
-The `USE_DHCP` macro toggles DHCP on/off; when disabled, the static IP parameters in the same file are used.
+[boot/kernel.cfg](boot/kernel.cfg) is the main configuration file for the kernel. It uses a simple INI-like format with sections and key-value pairs.  
+The file is parsed at runtime by the kernel to configure various aspects of the system.
 
-Wi-Fi credentials are provided via the boot partition. Copy [boot/wpa_supplicant.example.conf](boot/wpa_supplicant.example.conf) to `boot/wpa_supplicant.conf`, then edit SSID/PSK or other options as needed.
+> When mode is set to wifi, and kernel fails to connect to the Wi-Fi network, it will automatically fall back to Ethernet mode.
+
+### wpa_supplicant.conf
+
+[boot/wpa_supplicant.example.conf](boot/wpa_supplicant.example.conf) is an example configuration file for the WPA Supplicant, which is responsible for managing Wi-Fi connections. Copy this file to `boot/wpa_supplicant.conf` and edit the SSID, PSK, and other options as needed to connect to your Wi-Fi network.
 
 ### cmdline.txt
 
 [boot/cmdline.txt](boot/cmdline.txt) is the Raspberry Pi boot command line file. It can contain multiple boot parameters.  
 In this project it is currently used only to set the log output device.  
 If you want to see logs on a screen, simply remove this file from the SD Card.
+[third_party/circle/doc/cmdline.txt](third_party/circle/doc/cmdline.txt) has more details on the available options.
 
 ### config.txt
 
