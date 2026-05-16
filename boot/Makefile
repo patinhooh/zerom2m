@@ -41,7 +41,7 @@ FIRMWARE_NONFREE_LIST = \
 # Extract just the filenames for inclusion in copy/clean targets
 FIRMWARE_NONFREE_FILES := $(foreach x,$(FIRMWARE_NONFREE_LIST),$(firstword $(subst :, ,$(x))))
 
-CONFIG_FILES := cmdline.txt config.txt wpa_supplicant.conf
+CONFIG_FILES := cmdline.txt config.txt wpa_supplicant.conf kernel.cfg
 
 TARGET := kernel8.img
 

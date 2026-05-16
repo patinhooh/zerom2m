@@ -26,7 +26,7 @@ public:
      * @param socket Pointer to the socket for this instance.
      *               Pass nullptr for the first instance, which acts as the listener.
      */
-    HttpServer(CNetSubSystem *net, CActLED *led, CSocket *socket = nullptr);
+    HttpServer(u16 port, CNetSubSystem *net, CActLED *led, CSocket *socket = nullptr);
 
     ~HttpServer(void);
 
@@ -61,6 +61,7 @@ public:
 
 private:
     CActLED *led_;
+    u16      port_;
 };
 
 } // namespace zerom2m

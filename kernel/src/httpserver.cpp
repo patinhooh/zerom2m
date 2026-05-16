@@ -32,18 +32,17 @@ const char indexPage[] = "<html>"
                          "</html>";
 } // namespace
 
-HttpServer::HttpServer(CNetSubSystem *net, CActLED *led, CSocket *socket)
-    : CHTTPDaemon(net, socket, MAX_CONTENT_SIZE, HTTP_PORT, 0, TIMEOUT_SECONDS)
+HttpServer::HttpServer(u16 port, CNetSubSystem *net, CActLED *led, CSocket *socket)
+    : CHTTPDaemon(net, socket, MAX_CONTENT_SIZE, port, 0, TIMEOUT_SECONDS)
     , led_(led)
+    , port_(port)
 {
 }
 
 HttpServer::~HttpServer() { led_ = nullptr; }
 
 CHTTPDaemon *HttpServer::CreateWorker(CNetSubSystem *net, CSocket *socket)
-{
-    return new HttpServer(net, led_, socket);
-}
+{ return new HttpServer(port_, net, led_, socket); }
 
 THTTPStatus HttpServer::GetContent(const char  *path,
                                    const char  *params,

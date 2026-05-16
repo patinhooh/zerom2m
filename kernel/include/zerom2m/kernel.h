@@ -9,6 +9,8 @@
  */
 #pragma once
 
+#include "zerom2m/kernelconfig.h"
+
 #include <circle/actled.h>
 #include <circle/koptions.h>
 #include <circle/devicenameservice.h>
@@ -70,7 +72,7 @@ public:
 
 private:
     CActLED            led_;
-    CKernelOptions     options_;
+    CKernelOptions     kernelOptions_; // Circle kernel options
     CDeviceNameService deviceNameService_;
     CScreenDevice      screen_;
     CSerialDevice      serial_;
@@ -82,8 +84,9 @@ private:
     CUSBHCIDevice      usbHci_;
     CEMMCDevice        emmc_;
     FATFS              fileSystem_;
+    KernelConfig       kernelConfig_; // Kernel configuration loaded from file
     CBcm4343Device     wlan_;
-    CNetSubSystem      net_;
+    CNetSubSystem      *net_;
     CWPASupplicant     wpaSupplicant_;
 };
 
