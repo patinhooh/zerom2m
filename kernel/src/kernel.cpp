@@ -155,9 +155,10 @@ bool Kernel::Initialize()
 
     if (ok) logger_.Write(FromKernel, LogNotice, "Network subsystem initialized");
 
-    if (ok && openNetEnabled && wifiOk) {
+    if (ok && (openNetEnabled || wifiOk)) {
         ok = wpaSupplicant_.Initialize();
         if (ok) logger_.Write(FromKernel, LogNotice, "WPA supplicant started");
+        else logger_.Write(FromKernel, LogWarning, "WPA supplicant failed to start");
     }
 
     if (ok) {
@@ -172,27 +173,48 @@ bool Kernel::Initialize()
 ShutdownMode Kernel::Run()
 {
     logger_.Write(FromKernel, LogDebug, "Running kernel");
+    new BlinkTask(&led_, 1000); // Blink the LED every second to show the system is alive
     logger_.Write(FromKernel, LogDebug, "Setting Reboot Magic to '%s'", REBOOTMAGIC);
     serial_.RegisterMagicReceivedHandler(REBOOTMAGIC, SetReboot);
 
-    while (!net_->IsRunning()) {
+    // Wait for the net subsystem to become fully running. Add diagnostics
+    // and a timeout so the system doesn't hang indefinitely.
+    const int maxWaitMs = 30000; // 30 seconds
+    int       waited    = 0;
+    while (net_ != nullptr && !net_->IsRunning() && waited < maxWaitMs) {
         scheduler_.MsSleep(100);
+        waited += 1;
+        // Every 1 second
+        if ((waited % 10) == 0) {
+            logger_.Write(FromKernel, LogDebug, "Waiting for network: elapsed=%dms", waited);
+        }
+        scheduler_.Yield();
+    }
+    if (net_ == nullptr) {
+        logger_.Write(FromKernel, LogError, "Network subsystem pointer is null");
+        timer_.MsDelay(1000);
+        return ShutdownMode::Halt;
+    } else if (!net_->IsRunning()) {
+        logger_.Write(FromKernel, LogError, "Network failed to come up after %d ms", maxWaitMs);
+        // Do not start network services if network isn't running; halt so the
+        // issue can be diagnosed instead of continuing in a degraded state.
+        timer_.MsDelay(1000);
+        return ShutdownMode::Halt;
     }
 
     if (kernelConfig_.network.mode == NetworkMode::Wifi ||
         kernelConfig_.network.mode == NetworkMode::Auto) {
         wlan_.DumpStatus();
     }
+    logger_.Write(FromKernel, LogNotice, "Network is up");
 
     CString ip;
     net_->GetConfig()->GetIPAddress()->Format(&ip);
     logger_.Write(FromKernel, LogNotice, "HTTP server listening at http://%s/", (const char *)ip);
-
     new HttpServer(kernelConfig_.http.port, net_, &led_);
-    new BlinkTask(&led_, 1000);
 
     while (true) {
-        scheduler_.Yield();
+        scheduler_.MsSleep(100);
         if (shutdownRequest != ShutdownMode::None) {
             logger_.Write(FromKernel, LogNotice, "Shutdown requested: %d", shutdownRequest);
             timer_.MsDelay(1000);
