@@ -10,7 +10,7 @@
 #include "zerom2m/kernel.h"
 #include "zerom2m/blinktask.h"
 #include "zerom2m/configparser.h"
-#include "zerom2m/httpserver.h"
+#include "zerom2m/http/http_server.h"
 
 #include <circle/net/netsubsystem.h>
 
@@ -177,6 +177,7 @@ ShutdownMode Kernel::Run()
     logger_.Write(FromKernel, LogDebug, "Setting Reboot Magic to '%s'", REBOOTMAGIC);
     serial_.RegisterMagicReceivedHandler(REBOOTMAGIC, SetReboot);
 
+    // XXX: Move this to a NetworkManager class which manages the network subsystem?
     // Wait for the net subsystem to become fully running. Add diagnostics
     // and a timeout so the system doesn't hang indefinitely.
     const int maxWaitMs = 30000; // 30 seconds
@@ -208,10 +209,7 @@ ShutdownMode Kernel::Run()
     }
     logger_.Write(FromKernel, LogNotice, "Network is up");
 
-    CString ip;
-    net_->GetConfig()->GetIPAddress()->Format(&ip);
-    logger_.Write(FromKernel, LogNotice, "HTTP server listening at http://%s/", (const char *)ip);
-    new HttpServer(kernelConfig_.http.port, net_, &led_);
+    new http::HttpServer(kernelConfig_.http.port, net_, &led_);
 
     while (true) {
         scheduler_.MsSleep(100);

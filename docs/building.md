@@ -63,6 +63,7 @@ The [Root Makefile](../Makefile) is the **entry point for the entire build syste
 | `all` | Default target; builds the entire project |
 | `kernel` | Builds the ZeroM2M kernel |
 | `circle` | Builds the Circle bare-metal framework |
+| `check-kernel` | Runs a syntax check on ZeroM2M kernel without generating binaries |
 | `flash` \* | Flashes the built kernel to the Raspberry Pi via UART |
 | `monitor-<terminal>` \*\* | Opens a serial terminal to the Raspberry Pi for logs and interaction |
 | `qemu` | Run kernel image in QEMU, see [QEMU Setup](qemu.md) |
@@ -88,6 +89,7 @@ Build-time flags injected include:
 | Target | Purpose |
 | :--- | :--- |
 | `all` | Default target; compiles the kernel binary |
+| `check` | Runs a syntax check on ZeroM2M kernel without generating binaries |
 | `clean` | Removes all build artifacts |
 | `flash` \* | Flashes the built kernel to the Raspberry Pi via UART |
 | `monitor-<terminal>` \*\* | Opens a serial terminal to the Raspberry Pi for logs and interaction |
