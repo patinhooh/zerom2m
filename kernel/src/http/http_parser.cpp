@@ -10,6 +10,7 @@
 #include "zerom2m/http/http_parser.h"
 
 #include <assert.h>
+#include <circle/logger.h>
 #include <circle/string.h>
 #include <circle/util.h>
 
@@ -18,6 +19,8 @@ namespace zerom2m::http
 
 namespace
 {
+const char FromHttpParser[] = "http_parser";
+
 inline void TrimSpaces(char *&start, char *&end)
 {
     while (start < end && (*start == ' ' || *start == '\t')) {
@@ -74,6 +77,8 @@ ResponseStatus HttpParser::Parse(const u8 *data, size_t length, HttpRequest &req
                 }
                 request.Headers     = headers_;
                 request.HeaderCount = headerCount_;
+                CLogger::Get()->Write(
+                    FromHttpParser, LogDebug, "Parse ok headers=%u", (unsigned)headerCount_);
                 return ResponseStatus::OK;
             }
 
@@ -85,7 +90,10 @@ ResponseStatus HttpParser::Parse(const u8 *data, size_t length, HttpRequest &req
                 status = ParseHeaderLine(line, request);
             }
 
-            if (status != ResponseStatus::OK) { return status; }
+            if (status != ResponseStatus::OK) {
+                CLogger::Get()->Write(FromHttpParser, LogWarning, "Parse failed status=%u", status);
+                return status;
+            }
 
             lineStart = i + 1;
         }
@@ -100,19 +108,29 @@ ResponseStatus HttpParser::ParseRequestLine(char *line, HttpRequest &request)
     // Expected: METHOD SP TARGET SP HTTP/VERSION
     char *method = line;
     char *sp1    = strchr(line, ' ');
-    if (!sp1) return ResponseStatus::BadRequest;
+    if (!sp1) {
+        CLogger::Get()->Write(FromHttpParser, LogWarning, "Request line missing method");
+        return ResponseStatus::BadRequest;
+    }
     *sp1 = '\0';
 
     char *target = sp1 + 1;
     char *sp2    = strchr(target, ' ');
-    if (!sp2) return ResponseStatus::BadRequest;
+    if (!sp2) {
+        CLogger::Get()->Write(FromHttpParser, LogWarning, "Request line missing target");
+        return ResponseStatus::BadRequest;
+    }
     *sp2 = '\0';
 
     char *version = sp2 + 1;
-    if (*version == '\0') return ResponseStatus::BadRequest;
+    if (*version == '\0') {
+        CLogger::Get()->Write(FromHttpParser, LogWarning, "Request line missing version");
+        return ResponseStatus::BadRequest;
+    }
 
     request.Method = ParseMethodToken(method);
     if (request.Method == RequestMethod::RequestMethodUnknown) {
+        CLogger::Get()->Write(FromHttpParser, LogWarning, "Unknown method: %s", method);
         return ResponseStatus::MethodNotAllowed;
     }
 
@@ -143,10 +161,16 @@ ResponseStatus HttpParser::ParseHeaderLine(char *line, HttpRequest &request)
 {
     (void)request;
 
-    if (headerCount_ >= MaxHeaders) { return ResponseStatus::RequestHeaderFieldsTooLarge; }
+    if (headerCount_ >= MaxHeaders) {
+        CLogger::Get()->Write(FromHttpParser, LogWarning, "Too many headers");
+        return ResponseStatus::RequestHeaderFieldsTooLarge;
+    }
 
     char *colon = strchr(line, ':');
-    if (!colon) { return ResponseStatus::BadRequest; }
+    if (!colon) {
+        CLogger::Get()->Write(FromHttpParser, LogWarning, "Header missing colon");
+        return ResponseStatus::BadRequest;
+    }
 
     char *nameStart  = line;
     char *nameEnd    = colon;

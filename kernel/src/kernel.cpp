@@ -9,7 +9,7 @@
  */
 #include "zerom2m/kernel.h"
 #include "zerom2m/blinktask.h"
-#include "zerom2m/configparser.h"
+#include "zerom2m/config_parser.h"
 #include "zerom2m/http/http_server.h"
 
 #include <circle/net/netsubsystem.h>
@@ -19,19 +19,6 @@
 #define FIRMWARE_PATH DRIVE "/firmware/"
 #define CONFIG_PATH DRIVE "/kernel.cfg"
 #define WPA_PATH DRIVE "/wpa_supplicant.conf"
-
-// Makefile CPPFLAGS
-#ifndef COMMIT_HASH
-#define COMMIT_HASH "unknown"
-#endif
-
-#ifndef REBOOTMAGIC
-#define REBOOTMAGIC "reboot"
-#endif
-
-#ifndef USERBAUD
-#define USERBAUD 115200
-#endif
 
 namespace zerom2m
 {
@@ -209,7 +196,13 @@ ShutdownMode Kernel::Run()
     }
     logger_.Write(FromKernel, LogNotice, "Network is up");
 
-    new http::HttpServer(kernelConfig_.http.port, net_, &led_);
+    new http::HttpServer(kernelConfig_.http.port,
+                         net_,
+                         &led_,
+                         &kernelConfig_,
+                         kernelConfig_.http.max_content_size,
+                         kernelConfig_.http.timeout_seconds,
+                         kernelConfig_.http.max_clients);
 
     while (true) {
         scheduler_.MsSleep(100);

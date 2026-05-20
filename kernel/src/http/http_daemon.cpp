@@ -17,8 +17,6 @@
 #include <circle/sysconfig.h>
 #include <circle/util.h>
 
-#define MAX_CLIENTS 10
-
 #define HTTPD_STACK_SIZE TASK_STACK_SIZE
 
 namespace zerom2m::http
@@ -28,24 +26,27 @@ static const char FromHttpDaemon[] = "http_daemon";
 
 unsigned HttpDaemon::instanceCount_ = 0;
 
-HttpDaemon::HttpDaemon(CNetSubSystem *pNetSubSystem,
-                       IHttpHandler  *pHandler,
-                       CSocket       *pSocket,
-                       unsigned       nMaxContentSize,
-                       u16            nPort,
-                       unsigned       nTimeoutSeconds)
+HttpDaemon::HttpDaemon(CNetSubSystem *netSubSystem,
+                       IHttpHandler  *handler,
+                       CSocket       *socket,
+                       unsigned       maxContentSize,
+                       u16            port,
+                       unsigned       timeoutSeconds,
+                       unsigned       maxClients)
     : CTask(HTTPD_STACK_SIZE)
-    , netSubSystem_(pNetSubSystem)
-    , socket_(pSocket)
-    , handler_(pHandler)
-    , maxContentSize_(nMaxContentSize)
-    , port_(nPort)
-    , timeoutSeconds_(nTimeoutSeconds)
+    , netSubSystem_(netSubSystem)
+    , socket_(socket)
+    , handler_(handler)
+    , maxContentSize_(maxContentSize)
+    , port_(port)
+    , timeoutSeconds_(timeoutSeconds)
+    , maxClients_(maxClients)
 {
     instanceCount_++;
 
-    if (pSocket == nullptr) {
+    if (socket_ == nullptr) {
         SetName(FromHttpDaemon);
+        CLogger::Get()->Write(FromHttpDaemon, LogDebug, "Listener init port=%u", port_);
     } else {
         CString TaskName;
         TaskName.Format("httpd@%lp", this);
@@ -74,51 +75,51 @@ void HttpDaemon::Run(void)
     }
 }
 
-void HttpDaemon::WriteAccessLog(const CIPAddress &rRemoteIP,
+void HttpDaemon::WriteAccessLog(const CIPAddress &remoteIP,
                                 RequestMethod     requestMethod,
-                                const char       *pRequestURI,
+                                const char       *requestURI,
                                 ResponseStatus    status,
-                                unsigned          nContentLength)
+                                unsigned          contentLength)
 {
-    assert(pRequestURI != 0);
+    assert(requestURI != 0);
 
     CString IPString;
-    rRemoteIP.Format(&IPString);
+    remoteIP.Format(&IPString);
 
-    const char *pMethod;
+    const char *method;
 
     static_assert(RequestMethod::RequestMethodCount == 10,
                   "RequestMethod enum has changed, update ParseMethodToken accordingly");
     switch (requestMethod) {
         case GET:
-            pMethod = "GET";
+            method = "GET";
             break;
         case HEAD:
-            pMethod = "HEAD";
+            method = "HEAD";
             break;
         case POST:
-            pMethod = "POST";
+            method = "POST";
             break;
         case PUT:
-            pMethod = "PUT";
+            method = "PUT";
             break;
         case DELETE:
-            pMethod = "DELETE";
+            method = "DELETE";
             break;
         case PATCH:
-            pMethod = "PATCH";
+            method = "PATCH";
             break;
         case OPTIONS:
-            pMethod = "OPTIONS";
+            method = "OPTIONS";
             break;
         case TRACE:
-            pMethod = "TRACE";
+            method = "TRACE";
             break;
         case CONNECT:
-            pMethod = "CONNECT";
+            method = "CONNECT";
             break;
         default:
-            pMethod = "UNKNOWN";
+            method = "UNKNOWN";
             break;
     }
 
@@ -126,10 +127,10 @@ void HttpDaemon::WriteAccessLog(const CIPAddress &rRemoteIP,
                           LogDebug,
                           "%s \"%s %s\" %u %u",
                           (const char *)IPString,
-                          pMethod,
-                          pRequestURI,
+                          method,
+                          requestURI,
                           status,
-                          nContentLength);
+                          contentLength);
 }
 
 // Listener: bind and accept, spawn worker tasks (HttpDaemon instances)
@@ -148,7 +149,7 @@ void HttpDaemon::Listener(void)
         return;
     }
 
-    if (socket_->Listen(MAX_CLIENTS) < 0) {
+    if (socket_->Listen(maxClients_) < 0) {
         CLogger::Get()->Write(FromHttpDaemon, LogError, "Cannot listen on socket");
 
         delete socket_;
@@ -166,15 +167,28 @@ void HttpDaemon::Listener(void)
             continue;
         }
 
-        if (instanceCount_ >= MAX_CLIENTS + 1) {
+        CString ipString;
+        ForeignIP.Format(&ipString);
+        CLogger::Get()->Write(FromHttpDaemon,
+                              LogDebug,
+                              "Accepted connection from %s:%u",
+                              (const char *)ipString,
+                              nForeignPort);
+
+        if (instanceCount_ >= maxClients_ + 1) {
             CLogger::Get()->Write(FromHttpDaemon, LogWarning, "Too many clients");
             delete pConnection;
             continue;
         }
 
         // spawn a worker task which will process this connection
-        new HttpDaemon(
-            netSubSystem_, handler_, pConnection, maxContentSize_, port_, timeoutSeconds_);
+        new HttpDaemon(netSubSystem_,
+                       handler_,
+                       pConnection,
+                       maxContentSize_,
+                       port_,
+                       timeoutSeconds_,
+                       maxClients_);
     }
 }
 
@@ -196,6 +210,7 @@ void HttpDaemon::Worker(void)
 
     int nRecv = socket_->Receive((char *)pBuf, bufSize, 0);
     if (nRecv <= 0) {
+        CLogger::Get()->Write(FromHttpDaemon, LogWarning, "Receive failed");
         delete[] pBuf;
         delete socket_;
         socket_ = nullptr;
@@ -216,6 +231,7 @@ void HttpDaemon::Worker(void)
         CString header;
         HttpSerializer::Serialize(resp, header);
         socket_->Send((const char *)header, header.GetLength(), MSG_DONTWAIT);
+        CLogger::Get()->Write(FromHttpDaemon, LogWarning, "Parse failed status=%u", status);
 
         delete[] pBuf;
         delete socket_;

@@ -1,5 +1,5 @@
 /*
- * configparser.cpp
+ * config_parser.cpp
  *
  * ZeroM2M
  * Copyright (C) 2026 ZeroM2M Authors
@@ -7,7 +7,7 @@
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
-#include "zerom2m/configparser.h"
+#include "zerom2m/config_parser.h"
 
 #include <circle/logger.h>
 #include <circle/string.h>
@@ -19,7 +19,7 @@ namespace zerom2m
 
 namespace
 {
-const char FromConfigParser[] = "configparser";
+const char FromConfigParser[] = "config_parser";
 } // namespace
 
 ConfigParser::ConfigParser(KernelConfig &config, CLogger &logger)
@@ -110,8 +110,17 @@ void ConfigParser::ParseLine(const char *section, char *line)
     }
     // [http]
     else if (strcmp(section, "http") == 0) {
-        if (strcmp(key, "port") == 0) config_.http.port = atoi(value);
-        else logger_.Write(FromConfigParser, LogWarning, "Unknown http config key: '%s'", key);
+        if (strcmp(key, "port") == 0) {
+            config_.http.port = atoi(value);
+        } else if (strcmp(key, "max_content_size") == 0) {
+            config_.http.max_content_size = (unsigned)atoi(value);
+        } else if (strcmp(key, "timeout_seconds") == 0) {
+            config_.http.timeout_seconds = (unsigned)atoi(value);
+        } else if (strcmp(key, "max_clients") == 0) {
+            config_.http.max_clients = (unsigned)atoi(value);
+        } else {
+            logger_.Write(FromConfigParser, LogWarning, "Unknown http config key: '%s'", key);
+        }
     }
     // [system]
     else if (strcmp(section, "system") == 0) {
@@ -204,6 +213,11 @@ void ConfigParser::DumpConfig()
                       config_.network.dns[3]);
     }
     logger_.Write(FromConfigParser, LogDebug, "http.port = %u", config_.http.port);
+    logger_.Write(
+        FromConfigParser, LogDebug, "http.max_content_size = %u", config_.http.max_content_size);
+    logger_.Write(
+        FromConfigParser, LogDebug, "http.timeout_seconds = %u", config_.http.timeout_seconds);
+    logger_.Write(FromConfigParser, LogDebug, "http.max_clients = %u", config_.http.max_clients);
     logger_.Write(
         FromConfigParser, LogDebug, "system.hostname = %s", (const char *)config_.system.hostname);
 }

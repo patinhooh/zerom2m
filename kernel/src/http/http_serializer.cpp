@@ -8,12 +8,19 @@
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
 #include "zerom2m/http/http_serializer.h"
+#include "zerom2m/http/http_common.h"
 
+#include <circle/logger.h>
 #include <circle/string.h>
 #include <circle/util.h>
 
 namespace zerom2m::http
 {
+
+namespace
+{
+const char FromHttpSerializer[] = "http_serializer";
+}
 
 const char *HttpSerializer::StatusReason(ResponseStatus status)
 {
@@ -42,7 +49,7 @@ const char *HttpSerializer::StatusReason(ResponseStatus status)
 void HttpSerializer::Serialize(const HttpResponse &response, CString &outHeader)
 {
     outHeader.Format("HTTP/1.1 %u %s\r\n", response.Status, StatusReason(response.Status));
-    outHeader.Append("Server: HttpDaemon/0.1\r\n");
+    outHeader.Append("Server: " SERVER_NAME "\r\n");
 
     // Ensure Content-Length is always present. We add it even if caller omitted.
     unsigned contentLength = static_cast<unsigned>(response.BodyLength);

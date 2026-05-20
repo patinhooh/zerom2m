@@ -29,22 +29,23 @@ class HttpDaemon : public CTask
 public:
     // Listener mode: pass pSocket == nullptr.
     // Worker mode: pass an accepted CSocket.
-    HttpDaemon(CNetSubSystem *pNetSubSystem,
-               IHttpHandler  *pHandler,
-               CSocket       *pSocket         = nullptr,
-               unsigned       nMaxContentSize = 0,
-               u16            nPort           = HTTP_DEFAULT_PORT,
-               unsigned       nTimeoutSeconds = 0);
+    HttpDaemon(CNetSubSystem *netSubSystem,
+               IHttpHandler  *handler,
+               CSocket       *socket         = nullptr,
+               unsigned       maxContentSize = 0,
+               u16            port           = HTTP_DEFAULT_PORT,
+               unsigned       timeoutSeconds = 0,
+               unsigned       maxClients     = 10);
     ~HttpDaemon(void);
 
     void Run(void) override;
 
     // access logging hook (transport only)
-    virtual void WriteAccessLog(const CIPAddress &rRemoteIP,
+    virtual void WriteAccessLog(const CIPAddress &remoteIP,
                                 RequestMethod     requestMethod,
-                                const char       *pRequestURI,
+                                const char       *requestURI,
                                 ResponseStatus    status,
-                                unsigned          nContentLength);
+                                unsigned          contentLength);
 
 private:
     void Listener(void); // accepts incoming connections and creates worker task
@@ -57,6 +58,7 @@ private:
     unsigned       maxContentSize_;
     u16            port_;
     unsigned       timeoutSeconds_;
+    unsigned       maxClients_;
 
     static unsigned instanceCount_;
 };

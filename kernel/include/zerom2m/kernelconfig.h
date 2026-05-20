@@ -30,7 +30,10 @@ struct KernelConfig {
     } network;
 
     struct {
-        u16 port;
+        u16      port;
+        unsigned max_content_size;
+        unsigned timeout_seconds;
+        unsigned max_clients;
     } http;
 
     struct {
@@ -47,8 +50,11 @@ struct KernelConfig {
         network.gateway[0] = network.gateway[1] = network.gateway[2] = network.gateway[3] = 0;
         network.dns[0] = network.dns[1] = network.dns[2] = network.dns[3] = 0;
 
-        http.port       = 80;
-        system.hostname = "zerom2m";
+        http.port             = 80;
+        http.max_content_size = 2048;
+        http.timeout_seconds  = 10;
+        http.max_clients      = 10;
+        system.hostname       = "zerom2m";
     }
 };
 
