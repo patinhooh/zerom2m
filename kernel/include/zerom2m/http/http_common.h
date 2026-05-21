@@ -9,15 +9,19 @@
  */
 #pragma once
 
-#include "zerom2m/kernel.h"
+#ifndef COMMIT_HASH
+#define COMMIT_HASH "unknown"
+#endif
+
+#define SERVER_NAME "ZeroM2M/" COMMIT_HASH
 
 namespace zerom2m::http
 {
 
-#define SERVER_NAME "ZeroM2M/" COMMIT_HASH
-#define DEFAULT_PORT 80
-#define MAX_CLIENTS 10
-#define MAX_CONTENT_SIZE 2048
+static constexpr unsigned DEFAULT_PORT     = 80u;
+static constexpr unsigned MAX_CONTENT_SIZE = 2048u;
+static constexpr unsigned MAX_CLIENTS      = 10u;
+static constexpr unsigned TIMEOUT_SECONDS  = 10u;
 
 enum RequestMethod {
     GET,
