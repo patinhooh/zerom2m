@@ -8,7 +8,7 @@
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
 #include "zerom2m/kernel.h"
-#include "zerom2m/blinktask.h"
+#include "zerom2m/blink_task.h"
 #include "zerom2m/config_parser.h"
 #include "zerom2m/http/http_server.h"
 

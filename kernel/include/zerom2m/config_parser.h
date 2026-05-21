@@ -9,7 +9,7 @@
  */
 #pragma once
 
-#include "zerom2m/kernelconfig.h"
+#include "zerom2m/kernel_config.h"
 
 #include <circle/logger.h>
 

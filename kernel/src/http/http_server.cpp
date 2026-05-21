@@ -22,7 +22,9 @@ namespace
 const char FromHttpServer[] = "http_server";
 
 const char indexPage[] = "<html>"
-                         "<head><title>ZeroM2M</title></head>"
+                         "<head><title>ZeroM2M</title>"
+                         "<link rel=\"icon\" href=\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><rect width='16' height='16' fill='green'/></svg>\">"
+                         "</head>"
                          "<body>"
                          "<h1>ZeroM2M Server</h1>"
                          "<p>Server running.</p>"
@@ -76,7 +78,9 @@ HttpResponse HttpServer::HandleRequest(const HttpRequest &request)
                                ? "auto"
                                : (config_->network.mode == NetworkMode::Wifi ? "wifi" : "ethernet");
 
-        page.Format("<html><head><title>ZeroM2M</title></head><body>"
+        page.Format("<html><head><title>ZeroM2M</title>"
+                "<link rel=\"icon\" href=\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><rect width='16' height='16' fill='black'/></svg>\">"
+                "</head><body>"
                     "<h1>ZeroM2M Server</h1><p>Server running.</p>"
                     "<h2>Kernel configuration</h2>"
                     "<table border=\"1\" cellpadding=\"5\">"

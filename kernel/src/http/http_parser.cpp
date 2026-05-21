@@ -77,8 +77,6 @@ ResponseStatus HttpParser::Parse(const u8 *data, size_t length, HttpRequest &req
                 }
                 request.Headers     = headers_;
                 request.HeaderCount = headerCount_;
-                CLogger::Get()->Write(
-                    FromHttpParser, LogDebug, "Parse ok headers=%u", (unsigned)headerCount_);
                 return ResponseStatus::OK;
             }
 

@@ -12,8 +12,8 @@
 #include "zerom2m/http/http_daemon.h"
 #include "zerom2m/http/http_handler.h"
 #include "zerom2m/http/http_types.h"
+#include "zerom2m/kernel_config.h"
 
-#include "zerom2m/kernelconfig.h"
 #include <circle/actled.h>
 
 namespace zerom2m::http

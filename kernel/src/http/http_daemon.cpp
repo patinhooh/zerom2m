@@ -167,14 +167,6 @@ void HttpDaemon::Listener(void)
             continue;
         }
 
-        CString ipString;
-        ForeignIP.Format(&ipString);
-        CLogger::Get()->Write(FromHttpDaemon,
-                              LogDebug,
-                              "Accepted connection from %s:%u",
-                              (const char *)ipString,
-                              nForeignPort);
-
         if (instanceCount_ >= maxClients_ + 1) {
             CLogger::Get()->Write(FromHttpDaemon, LogWarning, "Too many clients");
             delete pConnection;
