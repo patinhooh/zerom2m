@@ -17,7 +17,15 @@ namespace zerom2m::http
 class IHttpHandler
 {
 public:
-    virtual ~IHttpHandler()                                        = default;
+    virtual ~IHttpHandler() = default;
+
+    /**
+     * @brief Handle an incoming HTTP request and produce a response.
+     *
+     * Implementations must not assume the request buffers outlive the call;
+     * copy any needed data. Return an HttpResponse structure describing the
+     * response status, headers and optional body.
+     */
     virtual HttpResponse HandleRequest(const HttpRequest &request) = 0;
 };
 

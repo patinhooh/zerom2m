@@ -18,34 +18,46 @@
 namespace zerom2m::http
 {
 
+/**
+ * @brief Name/value pair representing a single HTTP header.
+ */
 struct HttpHeader {
     StringView Name;
     StringView Value;
 };
 
+/**
+ * @brief Parsed HTTP request representation.
+ *
+ * `Target` holds the original request target (path + optional query).
+ * `Path` and `Query` are views into the parsed `Target` buffer.
+ */
 struct HttpRequest {
     RequestMethod Method{RequestMethod::RequestMethodUnknown};
 
-    StringView Target;
-    StringView Path;
-    StringView Query;
+    StringView Target; /**< Raw request-target */
+    StringView Path;   /**< Path portion of the target */
+    StringView Query;  /**< Query-string portion (if any) */
 
-    StringView Version;
+    StringView Version; /**< HTTP version token, e.g. "HTTP/1.1" */
 
-    const HttpHeader *Headers{nullptr};
+    const HttpHeader *Headers{nullptr}; /**< Array of headers (pointing into parse buffer) */
     size_t            HeaderCount{0};
 
-    const u8 *Body{nullptr};
+    const u8 *Body{nullptr}; /**< Pointer to request body (if any) */
     size_t    BodyLength{0};
 };
 
+/**
+ * @brief HTTP response description returned by handlers.
+ */
 struct HttpResponse {
     ResponseStatus Status{ResponseStatus::OK};
 
-    const HttpHeader *Headers{nullptr};
+    const HttpHeader *Headers{nullptr}; /**< Optional extra headers to emit */
     size_t            HeaderCount{0};
 
-    const u8 *Body{nullptr};
+    const u8 *Body{nullptr}; /**< Optional response body buffer */
     size_t    BodyLength{0};
 };
 

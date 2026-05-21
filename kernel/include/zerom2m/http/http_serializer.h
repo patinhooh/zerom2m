@@ -16,10 +16,22 @@
 namespace zerom2m::http
 {
 
+/**
+ * @brief Helpers to serialize HTTP responses and map status codes to reason strings.
+ */
 class HttpSerializer
 {
 public:
-    static void        Serialize(const HttpResponse &response, CString &outHeader);
+    /**
+     * @brief Serialize response status and headers into an HTTP/1.1 header block.
+     *
+     * This always writes a `Content-Length` header and a `Connection: close` line.
+     */
+    static void Serialize(const HttpResponse &response, CString &outHeader);
+
+    /**
+     * @brief Return the textual reason phrase for a status code.
+     */
     static const char *StatusReason(ResponseStatus status);
 };
 

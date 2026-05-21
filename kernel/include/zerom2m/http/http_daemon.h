@@ -27,20 +27,39 @@ namespace zerom2m::http
 class HttpDaemon : public CTask
 {
 public:
-    // Listener mode: pass pSocket == nullptr.
-    // Worker mode: pass an accepted CSocket.
+    /**
+     * @brief Construct an HttpDaemon
+     *
+     * @param netSubSystem Network subsystem used for listening/accepting
+     * @param handler Application-level request handler (may be nullptr)
+     * @param socket If nullptr: run in listener mode; otherwise worker for this socket
+     * @param maxContentSize Maximum allowed request content size
+     * @param port TCP port to bind when in listener mode
+     * @param timeoutSeconds Socket receive timeout in seconds
+     * @param maxClients Maximum number of concurrent clients (listener only)
+     */
     HttpDaemon(CNetSubSystem *netSubSystem,
                IHttpHandler  *handler,
                CSocket       *socket         = nullptr,
-               unsigned       maxContentSize = 0,
-               u16            port           = HTTP_DEFAULT_PORT,
+               unsigned       maxContentSize = MAX_CONTENT_SIZE,
+               u16            port           = DEFAULT_PORT,
                unsigned       timeoutSeconds = 0,
-               unsigned       maxClients     = 10);
+               unsigned       maxClients     = MAX_CLIENTS);
+
+    /**
+     * @brief Destroy the HttpDaemon
+     */
     ~HttpDaemon(void);
 
+    /**
+     * @brief Task entry point. Starts listener or processes a worker connection.
+     */
     void Run(void) override;
 
-    // access logging hook (transport only)
+    /**
+     * @brief Optional hook for access logging. Override in subclasses to capture
+     *        transport-level access logs (remote IP, method, uri, status, size).
+     */
     virtual void WriteAccessLog(const CIPAddress &remoteIP,
                                 RequestMethod     requestMethod,
                                 const char       *requestURI,
@@ -48,8 +67,15 @@ public:
                                 unsigned          contentLength);
 
 private:
-    void Listener(void); // accepts incoming connections and creates worker task
-    void Worker(void);   // processes a single connection
+    /**
+     * @brief Listener loop: bind, listen and spawn worker tasks for accepted sockets.
+     */
+    void Listener(void);
+
+    /**
+     * @brief Worker: process a single connection, parse request and send response.
+     */
+    void Worker(void);
 
 private:
     CNetSubSystem *netSubSystem_;

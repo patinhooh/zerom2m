@@ -15,10 +15,12 @@
 namespace zerom2m::http
 {
 
+static const char FromRouter[] = "router";
+
 void Router::Register(RequestMethod method, const char *pathPrefix, IHttpHandler *handler)
 {
     if (routeCount_ >= MaxRoutes) {
-        delete handler;
+        CLogger::Get()->Write(FromRouter, LogError, "Cannot register route: max routes reached");
         return;
     }
 

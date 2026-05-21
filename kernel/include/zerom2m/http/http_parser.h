@@ -16,9 +16,25 @@
 namespace zerom2m::http
 {
 
+/**
+ * @brief Simple in-place HTTP request parser.
+ *
+ * The parser operates on a writable buffer and produces views into that
+ * buffer (for headers, target, path, query and body).
+ */
 class HttpParser
 {
 public:
+    /**
+     * @brief Parse a raw HTTP request buffer.
+     *
+     * @param data Pointer to a writable buffer containing the HTTP request
+     *             (parser will NUL-terminate lines in-place).
+     * @param length Length of the buffer in bytes.
+     * @param request Output parsed request structure filled with views.
+     * @return ResponseStatus HTTP response code indicating parse success or
+     *         an error to be returned to the client.
+     */
     ResponseStatus Parse(const u8 *data, size_t length, HttpRequest &request);
 
 private:
