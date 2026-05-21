@@ -10,17 +10,13 @@
 #pragma once
 
 #include "zerom2m/http/http_common.h"
+#include "zerom2m/types.h"
 
 #include <circle/string.h>
 #include <circle/types.h>
 
 namespace zerom2m::http
 {
-
-struct StringView {
-    const char *Data{nullptr};
-    size_t      Length{0};
-};
 
 struct HttpHeader {
     StringView Name;

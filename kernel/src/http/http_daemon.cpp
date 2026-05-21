@@ -46,7 +46,6 @@ HttpDaemon::HttpDaemon(CNetSubSystem *netSubSystem,
 
     if (socket_ == nullptr) {
         SetName(FromHttpDaemon);
-        CLogger::Get()->Write(FromHttpDaemon, LogDebug, "Listener init port=%u", port_);
     } else {
         CString TaskName;
         TaskName.Format("httpd@%lp", this);
