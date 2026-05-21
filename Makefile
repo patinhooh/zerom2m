@@ -66,6 +66,9 @@ kernel: circle
 	@echo ">>>> Building Kernel"
 	$(MAKE) -C $(KERNEL_DIR) $(MAKEFLAGS)
 
+check-kernel:
+	$(MAKE) -C $(KERNEL_DIR) check $(MAKEFLAGS)
+
 # Cleaning
 clean: clean-circle clean-kernel
 

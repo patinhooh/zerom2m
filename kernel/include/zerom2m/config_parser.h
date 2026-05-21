@@ -1,5 +1,5 @@
 /*
- * configparser.h
+ * config_parser.h
  *
  * ZeroM2M
  * Copyright (C) 2026 ZeroM2M Authors
@@ -9,7 +9,7 @@
  */
 #pragma once
 
-#include "zerom2m/kernelconfig.h"
+#include "zerom2m/kernel_config.h"
 
 #include <circle/logger.h>
 

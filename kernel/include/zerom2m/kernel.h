@@ -9,28 +9,41 @@
  */
 #pragma once
 
-#include "zerom2m/kernelconfig.h"
+#include "zerom2m/kernel_config.h"
 
+#include <SDCard/emmc.h>
 #include <circle/actled.h>
-#include <circle/koptions.h>
 #include <circle/devicenameservice.h>
-#include <circle/screen.h>
-#include <circle/serial.h>
 #include <circle/exceptionhandler.h>
 #include <circle/interrupt.h>
-#include <circle/timer.h>
+#include <circle/koptions.h>
 #include <circle/logger.h>
+#include <circle/net/netsubsystem.h>
 #include <circle/sched/scheduler.h>
+#include <circle/screen.h>
+#include <circle/serial.h>
+#include <circle/timer.h>
+#include <circle/types.h>
 #include <circle/usb/usbhcidevice.h>
-#include <SDCard/emmc.h>
 #include <fatfs/ff.h>
 #include <wlan/bcm4343.h>
-#include <circle/net/netsubsystem.h>
 #include <wlan/hostap/wpa_supplicant/wpasupplicant.h>
-#include <circle/types.h>
 
 namespace zerom2m
 {
+
+// Makefile CPPFLAGS
+#ifndef COMMIT_HASH
+#define COMMIT_HASH "unknown"
+#endif
+
+#ifndef REBOOTMAGIC
+#define REBOOTMAGIC "reboot"
+#endif
+
+#ifndef USERBAUD
+#define USERBAUD 115200
+#endif
 
 enum ShutdownMode { None, Halt, Reboot };
 
@@ -86,7 +99,7 @@ private:
     FATFS              fileSystem_;
     KernelConfig       kernelConfig_; // Kernel configuration loaded from file
     CBcm4343Device     wlan_;
-    CNetSubSystem      *net_;
+    CNetSubSystem     *net_;
     CWPASupplicant     wpaSupplicant_;
 };
 

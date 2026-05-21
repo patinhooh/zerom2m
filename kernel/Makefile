@@ -8,7 +8,7 @@ BUILD := build
 
 TARGET := $(BUILD)/kernel8
 
-CPP_SRCS := $(wildcard src/*.cpp)
+CPP_SRCS := $(shell find src -name '*.cpp')
 OBJS := $(CPP_SRCS:src/%.cpp=$(BUILD)/src/%.o)
 
 # Link to Third-party Libraries
@@ -66,6 +66,10 @@ $(BUILD)/%.d: %.c
 	@$(CC) $(CFLAGS) -M -MG -MT $(@:.d=.o) -MT $@ -MF $@ $<
 
 EXTRACLEAN += $(shell find $(BUILD) -type f)
+
+check:
+	@echo "  CHECK"
+	@$(CPP) $(CPPFLAGS) -fsyntax-only $(CPP_SRCS)
 
 # Tools
 monitor-picocom:

@@ -8,9 +8,9 @@
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
 #include "zerom2m/kernel.h"
-#include "zerom2m/blinktask.h"
-#include "zerom2m/configparser.h"
-#include "zerom2m/httpserver.h"
+#include "zerom2m/blink_task.h"
+#include "zerom2m/config_parser.h"
+#include "zerom2m/http/http_server.h"
 
 #include <circle/net/netsubsystem.h>
 
@@ -19,19 +19,6 @@
 #define FIRMWARE_PATH DRIVE "/firmware/"
 #define CONFIG_PATH DRIVE "/kernel.cfg"
 #define WPA_PATH DRIVE "/wpa_supplicant.conf"
-
-// Makefile CPPFLAGS
-#ifndef COMMIT_HASH
-#define COMMIT_HASH "unknown"
-#endif
-
-#ifndef REBOOTMAGIC
-#define REBOOTMAGIC "reboot"
-#endif
-
-#ifndef USERBAUD
-#define USERBAUD 115200
-#endif
 
 namespace zerom2m
 {
@@ -177,6 +164,7 @@ ShutdownMode Kernel::Run()
     logger_.Write(FromKernel, LogDebug, "Setting Reboot Magic to '%s'", REBOOTMAGIC);
     serial_.RegisterMagicReceivedHandler(REBOOTMAGIC, SetReboot);
 
+    // XXX: Move this to a NetworkManager class which manages the network subsystem?
     // Wait for the net subsystem to become fully running. Add diagnostics
     // and a timeout so the system doesn't hang indefinitely.
     const int maxWaitMs = 30000; // 30 seconds
@@ -208,10 +196,13 @@ ShutdownMode Kernel::Run()
     }
     logger_.Write(FromKernel, LogNotice, "Network is up");
 
-    CString ip;
-    net_->GetConfig()->GetIPAddress()->Format(&ip);
-    logger_.Write(FromKernel, LogNotice, "HTTP server listening at http://%s/", (const char *)ip);
-    new HttpServer(kernelConfig_.http.port, net_, &led_);
+    new http::HttpServer(kernelConfig_.http.port,
+                         net_,
+                         &led_,
+                         &kernelConfig_,
+                         kernelConfig_.http.max_content_size,
+                         kernelConfig_.http.timeout_seconds,
+                         kernelConfig_.http.max_clients);
 
     while (true) {
         scheduler_.MsSleep(100);
