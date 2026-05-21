@@ -10,7 +10,7 @@
 #include "zerom2m/kernel.h"
 #include "zerom2m/blink_task.h"
 #include "zerom2m/config_parser.h"
-#include "zerom2m/http/http_server.h"
+#include "zerom2m/zerom2m_server.h"
 
 #include <circle/net/netsubsystem.h>
 
@@ -196,13 +196,7 @@ ShutdownMode Kernel::Run()
     }
     logger_.Write(FromKernel, LogNotice, "Network is up");
 
-    new http::HttpServer(kernelConfig_.http.port,
-                         net_,
-                         &led_,
-                         &kernelConfig_,
-                         kernelConfig_.http.max_content_size,
-                         kernelConfig_.http.timeout_seconds,
-                         kernelConfig_.http.max_clients);
+    new ZeroM2MServer(net_, &led_, &kernelConfig_);
 
     while (true) {
         scheduler_.MsSleep(100);
