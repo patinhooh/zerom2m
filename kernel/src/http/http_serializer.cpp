@@ -22,8 +22,12 @@ namespace
 const char FromHttpSerializer[] = "http_serializer";
 }
 
+/**
+ * @brief Map a ResponseStatus to a human-readable reason phrase.
+ */
 const char *HttpSerializer::StatusReason(ResponseStatus status)
 {
+    // TODO: This is not a complete mapping of all status codes; add more as needed.
     switch (status) {
         case ResponseStatus::OK:
             return "OK";

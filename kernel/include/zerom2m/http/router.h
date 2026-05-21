@@ -17,13 +17,30 @@
 namespace zerom2m::http
 {
 
+/**
+ * @brief Simple path-based router for dispatching requests to handlers.
+ *
+ * Routes may be registered with an optional trailing '*' to indicate a
+ * wildcard prefix match. The Router does NOT take ownership of handlers;
+ * callers must ensure registered handlers outlive the Router.
+ */
 class Router : public IHttpHandler
 {
 public:
-    // Router does NOT take ownership of handlers.
-    // Handlers must outlive the Router.
+    /**
+     * @brief Register a handler for requests matching method and path prefix.
+     *
+     * @param method HTTP method to match
+     * @param pathPrefix Path prefix to match (suffix '*' enables wildcard)
+     * @param handler Pointer to handler (not owned)
+     */
     void Register(RequestMethod method, const char *pathPrefix, IHttpHandler *handler);
 
+    /**
+     * @brief Dispatch the request to the first matching registered handler.
+     *
+     * Returns 404 Not Found when no route matches.
+     */
     HttpResponse HandleRequest(const HttpRequest &request) override;
 
 private:

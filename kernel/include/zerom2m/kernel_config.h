@@ -9,6 +9,7 @@
  */
 #pragma once
 
+#include "zerom2m/http/http_common.h"
 #include <circle/string.h>
 #include <circle/types.h>
 
@@ -50,10 +51,10 @@ struct KernelConfig {
         network.gateway[0] = network.gateway[1] = network.gateway[2] = network.gateway[3] = 0;
         network.dns[0] = network.dns[1] = network.dns[2] = network.dns[3] = 0;
 
-        http.port             = 80;
-        http.max_content_size = 2048;
-        http.timeout_seconds  = 10;
-        http.max_clients      = 10;
+        http.port             = http::DEFAULT_PORT;
+        http.max_content_size = http::MAX_CONTENT_SIZE;
+        http.timeout_seconds  = http::TIMEOUT_SECONDS;
+        http.max_clients      = http::MAX_CLIENTS;
         system.hostname       = "zerom2m";
     }
 };

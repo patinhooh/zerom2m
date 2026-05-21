@@ -132,7 +132,6 @@ void HttpDaemon::WriteAccessLog(const CIPAddress &remoteIP,
                           contentLength);
 }
 
-// Listener: bind and accept, spawn worker tasks (HttpDaemon instances)
 void HttpDaemon::Listener(void)
 {
     assert(netSubSystem_ != 0);
@@ -183,15 +182,14 @@ void HttpDaemon::Listener(void)
     }
 }
 
-// Worker: process a single connection, parse request, delegate to handler, serialize response
 void HttpDaemon::Worker(void)
 {
     assert(socket_ != 0);
 
     socket_->SetOptionReceiveTimeout(timeoutSeconds_ * 1000000);
 
-    // allocate a single buffer for header+body parsing. Embedded-friendly: fixed size.
-    unsigned bufSize = maxContentSize_ > 0 ? maxContentSize_ : 2048;
+    // allocate a single buffer for header+body parsing.
+    unsigned bufSize = maxContentSize_ > 0 ? maxContentSize_ : MAX_CONTENT_SIZE;
     u8      *pBuf    = new u8[bufSize];
     if (pBuf == nullptr) {
         delete socket_;
@@ -202,6 +200,7 @@ void HttpDaemon::Worker(void)
     int nRecv = socket_->Receive((char *)pBuf, bufSize, 0);
     if (nRecv <= 0) {
         CLogger::Get()->Write(FromHttpDaemon, LogWarning, "Receive failed");
+
         delete[] pBuf;
         delete socket_;
         socket_ = nullptr;
@@ -255,6 +254,7 @@ void HttpDaemon::Worker(void)
 
     if (socket_->Send((const char *)header, header.GetLength(), MSG_DONTWAIT) < 0) {
         CLogger::Get()->Write(FromHttpDaemon, LogError, "Cannot send response header");
+
         delete[] pBuf;
         delete socket_;
         socket_ = nullptr;
