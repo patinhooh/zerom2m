@@ -6,7 +6,7 @@ MAKEFLAGS += --no-print-directory
 CIRCLE_DIR ?= third_party/circle
 KERNEL_DIR ?= kernel
 
-.PHONY: all circle kernel clean clean-circle clean-kernel submodules check-submodules
+.PHONY: all circle kernel check-kernel clean clean-circle clean-kernel submodules flash monitor-putty monitor-minicom monitor-picocom qemu
 
 all: kernel
 
@@ -25,7 +25,7 @@ circle: $(CIRCLE_DIR)/Config.mk
 	@echo ">>>> Building Wlan addon"
 	cd $(CIRCLE_DIR)/addon/wlan && ./makeall --nosample $(MAKEFLAGS)
 
-$(CIRCLE_DIR)/Config.mk: Config.mk submodules
+$(CIRCLE_DIR)/Config.mk: Config.mk
 	@echo
 	@echo ">>>> Configuring Circle core"
 	@if [ -L "$@" ]; then \
@@ -50,14 +50,17 @@ Config.mk:
 
 # Submodules
 submodules:
-	@echo
 	@echo ">>>> Checking submodules"
-	@if [ -d "$(CIRCLE_DIR)" ]; then \
-		echo "Submodule already initialized: $(CIRCLE_DIR)"; \
+
+	@git submodule status $(CIRCLE_DIR) | grep -q '^[+-]' && \
+		(echo "Initializing $(CIRCLE_DIR)"; git submodule update --init $(CIRCLE_DIR)) || \
+		echo "$(CIRCLE_DIR) already initialized"
+
+	@echo "Initializing $(CIRCLE_DIR)/addon/wlan/hostap"
+	@if [ -f "$(CIRCLE_DIR)/makeall" ]; then \
+		cd $(CIRCLE_DIR) && git submodule update --init addon/wlan/hostap; \
 	else \
-		echo "Initializing Circle submodules..."; \
-		git submodule update --init $(CIRCLE_DIR); \
-		cd $(CIRCLE_DIR)/addon/wlan/hostap && git submodule update --init; \
+		echo "circle not available, skipping hostap"; \
 	fi
 
 # Kernel

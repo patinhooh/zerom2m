@@ -15,7 +15,13 @@ Clone the repository:
 
 ```bash
 git clone <repository-url>
-cd zero-m2m
+cd zerom2m
+```
+
+Clone submodules:
+
+```bash
+make submodules
 ```
 
 Copy the example configuration and adjust as needed:
@@ -37,7 +43,7 @@ Go to the boot directory and edit the kernel configurations:
 ```bash
 cd boot
 # Edit the configuration file if needed
-nano zerom2m.cfg
+nano kernel.cfg
 ```
 
 If using Wi-Fi, adjust the network settings as needed:
