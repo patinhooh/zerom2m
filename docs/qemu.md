@@ -28,7 +28,7 @@ https://codeberg.org/larchcone/qemu
 ### Clone and build
 
 ```bash
-git clone https://codeberg.org/larchcone/qemu.git
+git clone https://codeberg.org/larchcone/qemu.git --depth 1
 
 cd qemu
 mkdir build
@@ -58,17 +58,11 @@ QEMU_BINARY = /path/to/qemu/build/qemu-system-aarch64
 
 ## Configure the project to be QEMU-safe
 
-Set the [boot/kernel.cfg](boot/kernel.cfg) to the following:
+Set the [boot/kernel.cfg](../boot/kernel.cfg) to the following for the networking section:
 
 ```cfg
 [network]
 mode=ethernet;
-
-[http]
-port=80
-
-[system]
-hostname=zerom2mQEMU
 ```
 
 This disables hardware-specific modules that won't work in QEMU:
