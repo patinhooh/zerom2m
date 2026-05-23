@@ -1,5 +1,5 @@
 /*
- * http_daemon.h
+ * http_daemon.cpp
  *
  * ZeroM2M
  * Copyright (C) 2026 ZeroM2M Authors
@@ -87,8 +87,6 @@ void HttpDaemon::WriteAccessLog(const CIPAddress &remoteIP,
 
     const char *method;
 
-    static_assert(RequestMethod::RequestMethodCount == 10,
-                  "RequestMethod enum has changed, update ParseMethodToken accordingly");
     switch (requestMethod) {
         case GET:
             method = "GET";

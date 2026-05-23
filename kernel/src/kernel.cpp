@@ -9,6 +9,7 @@
  */
 #include "zerom2m/kernel.h"
 #include "zerom2m/blink_task.h"
+#include "zerom2m/codecs/auto_codec.h"
 #include "zerom2m/config_parser.h"
 #include "zerom2m/zerom2m_server.h"
 
@@ -196,7 +197,12 @@ ShutdownMode Kernel::Run()
     }
     logger_.Write(FromKernel, LogNotice, "Network is up");
 
-    new ZeroM2MServer(net_, &led_, &kernelConfig_);
+    // TODO: Add a proper service manager which starts services based on config and manages their
+    // lifecycle (restart on failure, etc.)
+    onem2m::OneM2MService service;
+    codecs::AutoCodec     codec;
+
+    new ZeroM2MServer(net_, &led_, &kernelConfig_, service, codec, nullptr);
 
     while (true) {
         scheduler_.MsSleep(100);

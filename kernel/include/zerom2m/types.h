@@ -9,6 +9,7 @@
  */
 #pragma once
 
+#include <circle/string.h>
 #include <circle/types.h>
 
 namespace zerom2m
@@ -18,5 +19,18 @@ struct StringView {
     const char *Data{nullptr};
     size_t      Length{0};
 };
+
+inline CString toCString(const StringView &sv)
+{
+    if (sv.Data == nullptr || sv.Length == 0) { return CString{}; }
+
+    CString s;
+    s.Append("");
+
+    for (size_t i = 0; i < sv.Length; ++i) {
+        s += sv.Data[i];
+    }
+    return s;
+}
 
 } // namespace zerom2m

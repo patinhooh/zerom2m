@@ -24,10 +24,12 @@ namespace
 const char FromHttpServer[] = "http_server";
 } // namespace
 
-ZeroM2MServer::ZeroM2MServer(CNetSubSystem      *net,
-                             CActLED            *led,
-                             const KernelConfig *config,
-                             CSocket            *socket)
+ZeroM2MServer::ZeroM2MServer(CNetSubSystem         *net,
+                             CActLED               *led,
+                             const KernelConfig    *config,
+                             onem2m::OneM2MService &service,
+                             codecs::AutoCodec     &codec,
+                             CSocket               *socket)
     : HttpDaemon(net,
                  &router_,
                  socket,
@@ -38,9 +40,18 @@ ZeroM2MServer::ZeroM2MServer(CNetSubSystem      *net,
     , led_(led)
     , config_(config)
     , router_()
+    , service_(service)
+    , codec_(codec)
     , indexHandler_(config)
+    , httpAdapter_(codec_, service_)
 {
+    // Make sure the service is initialized before we start.
+    service_.Initialize();
+
     // Register handlers for different routes.
+    router_.Register(http::RequestMethod::GET, "/m2m*", &httpAdapter_);
+    router_.Register(http::RequestMethod::POST, "/m2m*", &httpAdapter_);
+    // TODO: Move this index info into an AE from the node it self resource and serve it from there
     router_.Register(http::RequestMethod::GET, "/", &indexHandler_);
 }
 

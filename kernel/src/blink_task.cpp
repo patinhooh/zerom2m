@@ -1,5 +1,5 @@
 /*
- * blink_task.h
+ * blink_task.cpp
  *
  * ZeroM2M
  * Copyright (C) 2026 ZeroM2M Authors
@@ -15,9 +15,9 @@
 namespace zerom2m
 {
 
-BlinkTask::BlinkTask(CActLED *pLED, unsigned intervalMs)
+BlinkTask::BlinkTask(CActLED *led, unsigned intervalMs)
     : CTask()
-    , led_(pLED)
+    , led_(led)
     , intervalMs_(intervalMs)
 {
 }
