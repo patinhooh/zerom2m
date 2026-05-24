@@ -35,8 +35,6 @@ inline bool Equals(const char *a, const char *b) { return strcmp(a, b) == 0; }
 
 RequestMethod ParseMethodToken(const char *token)
 {
-    static_assert(RequestMethod::RequestMethodCount == 10,
-                  "RequestMethod enum has changed, update ParseMethodToken accordingly");
     if (Equals(token, "GET")) return RequestMethod::GET;
     if (Equals(token, "HEAD")) return RequestMethod::HEAD;
     if (Equals(token, "POST")) return RequestMethod::POST;

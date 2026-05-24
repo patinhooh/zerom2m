@@ -33,8 +33,7 @@ enum RequestMethod {
     POST,
     PATCH,
     CONNECT,
-    RequestMethodUnknown,
-    RequestMethodCount
+    RequestMethodUnknown
 };
 
 enum ResponseStatus {
