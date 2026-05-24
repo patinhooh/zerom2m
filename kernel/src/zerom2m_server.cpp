@@ -28,7 +28,6 @@ ZeroM2MServer::ZeroM2MServer(CNetSubSystem         *net,
                              CActLED               *led,
                              const KernelConfig    *config,
                              onem2m::OneM2MService &service,
-                             codecs::AutoCodec     &codec,
                              CSocket               *socket)
     : HttpDaemon(net,
                  &router_,
@@ -41,9 +40,8 @@ ZeroM2MServer::ZeroM2MServer(CNetSubSystem         *net,
     , config_(config)
     , router_()
     , service_(service)
-    , codec_(codec)
     , indexHandler_(config)
-    , httpAdapter_(codec_, service_)
+    , httpAdapter_(service_)
 {
     // Make sure the service is initialized before we start.
     service_.Initialize();

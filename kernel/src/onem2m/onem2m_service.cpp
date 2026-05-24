@@ -9,9 +9,8 @@
  */
 #include "zerom2m/onem2m/onem2m_service.h"
 #include "zerom2m/http/http_common.h"
-#include "zerom2m/types.h"
+#include "zerom2m/compat/types.h"
 
-#include "zerom2m/compat/collections.h"
 #include "zerom2m/onem2m/types/primitives.h"
 
 #include <circle/logger.h>

@@ -11,48 +11,49 @@
 #include "zerom2m/onem2m/adapters/http/headers.h"
 #include "zerom2m/onem2m/types/enums.h"
 
-#include "zerom2m/codecs/auto_codec.h"
-
-#include "zerom2m/codecs/auto_codec.h"
-#include "zerom2m/compat/collections.h"
 #include "zerom2m/onem2m/types/short_names.h"
+#include "zerom2m/serde/serde.h"
+
+#include "zerom2m/compat/types.h"
 
 #include <circle/logger.h>
-#include <circle/types.h>
 
 using namespace zerom2m::http;
 using namespace zerom2m::onem2m::types;
+using namespace zerom2m::compat;
 
-using zerom2m::toCString;
-using zerom2m::codecs::AutoCodec;
-using zerom2m::compat::Optional;
+using zerom2m::serde::SerDe;
 
 namespace zerom2m::onem2m::adapters::http
 {
 
-HttpAdapter::HttpAdapter(AutoCodec &codec, OneM2MService &service)
-    : codec_(codec)
-    , service_(service)
+HttpAdapter::HttpAdapter(OneM2MService &service)
+    : service_(service)
 {
 }
 
-// TODO
 HttpResponse HttpAdapter::HandleRequest(const HttpRequest &req)
 {
-    HttpResponse out;
-
-    // Log a concise incoming request (method + path)
-    CString path = toCString(req.Path);
+    CString path = StringViewToCString(req.Path);
     CLogger::Get()->Write(
         "http_adapter", LogNotice, "HTTP request method=%d path=%s", (int)req.Method, path.c_str());
 
     RequestPrimitive prim = decodeRequest(req);
 
+    CString errMsg;
+    if (!isValid(prim, errMsg)) {
+        CLogger::Get()->Write("http_adapter", LogWarning, "Invalid primitive: %s", errMsg.c_str());
+        ResponsePrimitive errResp = makeResponse(prim, ResponseStatusCode::BadRequest);
+        return encodeResponse(errResp, mime::JSON);
+    }
+
+    CString mimeType = req.GetHeaderValue(ACCEPT);
+    if (mimeType.GetLength() == 0) mimeType = req.GetHeaderValue(CONTENT_TYPE);
+    if (mimeType.GetLength() == 0) mimeType = mime::JSON;
+
     ResponsePrimitive resp = service_.HandleRequest(prim);
+    HttpResponse      out  = encodeResponse(resp, mimeType);
 
-    out = encodeResponse(resp);
-
-    // Log the response status mapping
     CLogger::Get()->Write("http_adapter",
                           LogNotice,
                           "Responding rsc=%u http=%d",
@@ -61,6 +62,7 @@ HttpResponse HttpAdapter::HandleRequest(const HttpRequest &req)
 
     return out;
 }
+
 ParsedContentType HttpAdapter::parseContentType(const CString &ct)
 {
     ParsedContentType result;
@@ -189,7 +191,7 @@ RequestPrimitive HttpAdapter::decodeRequest(const HttpRequest &r)
     RequestPrimitive prim;
 
     decodeRequestHeaders(r, prim);
-    prim.to = toCString(r.Path);
+    prim.to = StringViewToCString(r.Path);
 
     decodeQueryParams(r, prim);
 
@@ -210,29 +212,30 @@ RequestPrimitive HttpAdapter::decodeRequest(const HttpRequest &r)
     // ---- Body -> PrimitiveContent --------------------------------------------
     if (r.Body != nullptr && r.BodyLength > 0) {
         StringView bodyView{reinterpret_cast<const char *>(r.Body), r.BodyLength};
-        CString    body        = toCString(bodyView);
+        CString    body        = StringViewToCString(bodyView);
         CString    contentType = r.GetHeaderValue(CONTENT_TYPE);
-        codec_.DeserializeRequestBody(body, contentType, prim);
+        SerDe::Get().DeserializeRequestBody(body, contentType, prim);
     }
 
     return prim;
 }
 
-HttpResponse HttpAdapter::encodeResponse(const ResponsePrimitive &rsp, const CString &contentType)
+HttpResponse HttpAdapter::encodeResponse(const ResponsePrimitive &rsp,
+                                         const CString           &contentType)
 {
     HttpResponse out;
 
-    // HTTP status line
+    // HTTP status
     out.Status = rscToHttpStatus(rsp.responseStatusCode);
 
-    // Mandatory oneM2M response headers
+    // Add mandatory oneM2M response headers
     CString rscStr;
     rscStr.Format("%u", static_cast<unsigned>(rsp.responseStatusCode));
     out.AddHeader(RSC, rscStr);
     out.AddHeader(REQUEST_ID, rsp.requestIdentifier);
     out.AddHeader(ORIGIN, rsp.from);
 
-    // Optional headers
+    // Add optional metadata headers
     if (rsp.releaseVersionIndicator.has_value())
         out.AddHeader(RELEASE_VERSION, *rsp.releaseVersionIndicator);
     if (rsp.originatingTimestamp.has_value())
@@ -246,17 +249,30 @@ HttpResponse HttpAdapter::encodeResponse(const ResponsePrimitive &rsp, const CSt
     if (rsp.tokenRequestInformation.has_value())
         out.AddHeader(TOKEN_REQ_INFO, *rsp.tokenRequestInformation);
 
-    // Content-Location for Created responses
-    if (rsp.responseStatusCode == ResponseStatusCode::Created && rsp.to.GetLength() != 0)
+    // Handle specific RESTful location behaviors
+    if (rsp.responseStatusCode == ResponseStatusCode::Created && rsp.to.GetLength() > 0) {
         out.AddHeader(CONTENT_LOCATION, rsp.to);
+    }
 
-    // Body
-    if (!rsp.content.empty()) {
-        CString body = codec_.SerializePrimitiveContent(rsp.content, contentType);
-        if (body.GetLength() != 0) {
-            out.SetBody(body);
-            out.AddHeader(CONTENT_TYPE, contentType);
-        }
+    // Short-circuit if there is no body payload
+    if (rsp.content.empty()) { return out; }
+
+    // Serialize PrimitiveContent
+    CString body;
+    if (!SerDe::Get().SerializePrimitiveContent(rsp.content, contentType, body)) {
+        CLogger::Get()->Write("http_adapter",
+                              LogError,
+                              "Failed to serialize response content for rsc=%u",
+                              static_cast<unsigned>(rsp.responseStatusCode));
+
+        out.Status = ResponseStatus::InternalServerError;
+        out.ClearBody();
+        return out;
+    }
+
+    if (body.GetLength() > 0) {
+        out.SetBody(body);
+        out.AddHeader(CONTENT_TYPE, contentType);
     }
 
     return out;
@@ -312,8 +328,8 @@ FilterCriteria HttpAdapter::filterCriteriaFromQuery(const HttpRequest &r)
     // multi-value keys
     for (size_t i = 0; i < r.QueryParamCount; ++i) {
         const QueryParam &p    = r.QueryParams[i];
-        CString           name = toCString(p.Name);
-        CString           val  = toCString(p.Value);
+        CString           name = StringViewToCString(p.Name);
+        CString           val  = StringViewToCString(p.Value);
         if (name == sn::attr::LABELS) fc.labels.push_back(val);
         if (name == sn::attr::RESOURCE_TYPE) {
             char         *end = nullptr;
@@ -471,7 +487,8 @@ ResponseStatusCode HttpAdapter::httpStatusToRsc(ResponseStatus httpStatus)
     }
 }
 
-// TODO: this would be neede for notifications if we implement client-side calls. For now it's unused.
+// TODO: this would be neede for notifications if we implement client-side calls. For now it's
+// unused.
 HttpRequest HttpAdapter::encodeRequest(const RequestPrimitive &prim,
                                        const CString          &baseUrl,
                                        const CString          &acceptType)
