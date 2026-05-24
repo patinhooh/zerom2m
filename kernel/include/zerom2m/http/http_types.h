@@ -9,8 +9,8 @@
  */
 #pragma once
 
+#include "zerom2m/compat/string_view.h"
 #include "zerom2m/http/http_common.h"
-#include "zerom2m/types.h"
 
 #include <circle/string.h>
 #include <circle/types.h>
@@ -18,6 +18,8 @@
 
 namespace zerom2m::http
 {
+
+using StringView = zerom2m::compat::StringView;
 
 /**
  * @brief Name/value pair representing a single HTTP header.
@@ -77,7 +79,7 @@ struct HttpRequest {
 
         if (h == nullptr || h->Value.Data == nullptr) { return CString{}; }
 
-        return toCString(h->Value);
+        return StringViewToCString(h->Value);
     }
 
     // Query helpers
@@ -104,7 +106,7 @@ struct HttpRequest {
 
         if (q == nullptr || q->Value.Data == nullptr) { return CString{}; }
 
-        return toCString(q->Value);
+        return StringViewToCString(q->Value);
     }
 };
 
@@ -132,8 +134,8 @@ struct HttpResponse {
 
     // -----------------------------------------------------------------------
     HttpResponse() = default;
-    HttpResponse(const HttpResponse &other)            { CopyFrom(other); }
-    HttpResponse(HttpResponse &&other) noexcept        { CopyFrom(other); }
+    HttpResponse(const HttpResponse &other) { CopyFrom(other); }
+    HttpResponse(HttpResponse &&other) noexcept { CopyFrom(other); }
     HttpResponse &operator=(const HttpResponse &other)
     {
         if (this != &other) { CopyFrom(other); }
@@ -157,8 +159,8 @@ struct HttpResponse {
         for (size_t i = 0; i < OwnedHeaderCount; ++i) {
             if (OwnedHeaderNames[i].Compare(name) == 0) {
                 OwnedHeaderValues[i]   = value;
-                HeaderStorage[i].Value = { OwnedHeaderValues[i].c_str(),
-                                           OwnedHeaderValues[i].GetLength() };
+                HeaderStorage[i].Value = {OwnedHeaderValues[i].c_str(),
+                                          OwnedHeaderValues[i].GetLength()};
                 return;
             }
         }
@@ -169,10 +171,10 @@ struct HttpResponse {
         OwnedHeaderNames[OwnedHeaderCount]  = name;
         OwnedHeaderValues[OwnedHeaderCount] = value;
 
-        HeaderStorage[OwnedHeaderCount].Name  = { OwnedHeaderNames[OwnedHeaderCount].c_str(),
-                                                   OwnedHeaderNames[OwnedHeaderCount].GetLength() };
-        HeaderStorage[OwnedHeaderCount].Value = { OwnedHeaderValues[OwnedHeaderCount].c_str(),
-                                                   OwnedHeaderValues[OwnedHeaderCount].GetLength() };
+        HeaderStorage[OwnedHeaderCount].Name  = {OwnedHeaderNames[OwnedHeaderCount].c_str(),
+                                                 OwnedHeaderNames[OwnedHeaderCount].GetLength()};
+        HeaderStorage[OwnedHeaderCount].Value = {OwnedHeaderValues[OwnedHeaderCount].c_str(),
+                                                 OwnedHeaderValues[OwnedHeaderCount].GetLength()};
         ++OwnedHeaderCount;
 
         Headers     = HeaderStorage;
@@ -180,15 +182,10 @@ struct HttpResponse {
     }
 
     void AddHeader(const char *name, const CString &value)
-    {
-        AddHeader(name, static_cast<const char *>(value));
-    }
+    { AddHeader(name, static_cast<const char *>(value)); }
 
     void AddHeader(const CString &name, const CString &value)
-    {
-        AddHeader(static_cast<const char *>(name),
-                  static_cast<const char *>(value));
-    }
+    { AddHeader(static_cast<const char *>(name), static_cast<const char *>(value)); }
 
     // -----------------------------------------------------------------------
     void ClearBody()
@@ -200,7 +197,10 @@ struct HttpResponse {
 
     void SetBody(const char *data, size_t length)
     {
-        if (data == nullptr || length == 0) { ClearBody(); return; }
+        if (data == nullptr || length == 0) {
+            ClearBody();
+            return;
+        }
         if (length > MAX_CONTENT_SIZE) { length = MAX_CONTENT_SIZE; }
         memcpy(BodyStorage, data, length);
         BodyStorage[length] = '\0';
@@ -208,15 +208,10 @@ struct HttpResponse {
         BodyLength          = length;
     }
 
-    void SetBody(const char *data)
-    {
-        SetBody(data, data != nullptr ? strlen(data) : 0);
-    }
+    void SetBody(const char *data) { SetBody(data, data != nullptr ? strlen(data) : 0); }
 
     void SetBody(const CString &data)
-    {
-        SetBody(static_cast<const char *>(data), data.GetLength());
-    }
+    { SetBody(static_cast<const char *>(data), data.GetLength()); }
 
 private:
     void CopyFrom(const HttpResponse &other)
@@ -229,10 +224,9 @@ private:
         for (size_t i = 0; i < OwnedHeaderCount; ++i) {
             OwnedHeaderNames[i]    = other.OwnedHeaderNames[i];
             OwnedHeaderValues[i]   = other.OwnedHeaderValues[i];
-            HeaderStorage[i].Name  = { OwnedHeaderNames[i].c_str(),
-                                        OwnedHeaderNames[i].GetLength() };
-            HeaderStorage[i].Value = { OwnedHeaderValues[i].c_str(),
-                                        OwnedHeaderValues[i].GetLength() };
+            HeaderStorage[i].Name  = {OwnedHeaderNames[i].c_str(), OwnedHeaderNames[i].GetLength()};
+            HeaderStorage[i].Value = {OwnedHeaderValues[i].c_str(),
+                                      OwnedHeaderValues[i].GetLength()};
         }
 
         if (OwnedHeaderCount > 0) {
@@ -246,8 +240,7 @@ private:
 
         if (other.Body != nullptr && other.BodyLength > 0)
             SetBody(reinterpret_cast<const char *>(other.Body), other.BodyLength);
-        else
-            ClearBody();
+        else ClearBody();
     }
 };
 

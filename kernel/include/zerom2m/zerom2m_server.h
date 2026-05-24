@@ -39,20 +39,15 @@ public:
                   CActLED               *led,
                   const KernelConfig    *config,
                   onem2m::OneM2MService &service,
-                  codecs::AutoCodec     &codec,
                   CSocket               *socket = nullptr);
 
     ~ZeroM2MServer(void);
 
 private:
-    CActLED            *led_;
-    const KernelConfig *config_{nullptr};
-
-    http::Router router_;
-
+    CActLED               *led_;
+    const KernelConfig    *config_{nullptr};
+    http::Router           router_;
     onem2m::OneM2MService &service_;
-    codecs::AutoCodec     &codec_;
-
     // TODO: Move this index info into an AE from the node it self resource and serve it from there
     handlers::IndexHandler              indexHandler_;
     onem2m::adapters::http::HttpAdapter httpAdapter_;

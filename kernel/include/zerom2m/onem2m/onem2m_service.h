@@ -7,18 +7,17 @@
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
-#include "zerom2m/compat/collections.h"
 #include "zerom2m/onem2m/types/primitives.h"
 #include "zerom2m/onem2m/types/resources.h"
-#include "zerom2m/types.h"
 
+#include "zerom2m/compat/vector.h"
 #include <circle/types.h>
 
 namespace zerom2m::onem2m
 {
 
 using namespace zerom2m::onem2m::types;
-using namespace zerom2m::compat;
+using zerom2m::compat::Vector;
 
 class OneM2MService
 {

@@ -9,10 +9,8 @@
  */
 #pragma once
 
-#include "zerom2m/compat/collections.h"
+#include "zerom2m/compat/types.h"
 #include "zerom2m/onem2m/types/enums.h"
-
-#include <circle/types.h>
 
 namespace zerom2m::onem2m::types
 {

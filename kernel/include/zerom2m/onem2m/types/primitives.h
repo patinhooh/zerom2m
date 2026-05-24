@@ -12,9 +12,7 @@
 #include "zerom2m/onem2m/types/enums.h"
 #include "zerom2m/onem2m/types/resources.h"
 
-#include "zerom2m/compat/collections.h"
-
-#include <circle/types.h>
+#include "zerom2m/compat/types.h"
 
 // Minimal replacement for std::is_same_v (STDLIB_SUPPORT=0 builds). This provides the
 // is_same trait and is_same_v helper used below.
@@ -28,6 +26,8 @@ template <typename A, typename B> inline constexpr bool is_same_v = is_same<A, B
 
 namespace zerom2m::onem2m::types
 {
+
+using namespace zerom2m::compat;
 
 // A child resource reference as returned in "attributes and child resource references"
 struct ChildResourceRef {

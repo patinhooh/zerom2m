@@ -1,5 +1,5 @@
 /*
- * types.h
+ * string_view.h
  *
  * ZeroM2M
  * Copyright (C) 2026 ZeroM2M Authors
@@ -10,9 +10,9 @@
 #pragma once
 
 #include <circle/string.h>
-#include <circle/types.h>
+#include <circle/util.h>
 
-namespace zerom2m
+namespace zerom2m::compat
 {
 
 struct StringView {
@@ -20,7 +20,7 @@ struct StringView {
     size_t      Length{0};
 };
 
-inline CString toCString(const StringView &sv)
+inline CString StringViewToCString(const StringView &sv)
 {
     if (sv.Data == nullptr || sv.Length == 0) { return CString{}; }
 
@@ -33,4 +33,14 @@ inline CString toCString(const StringView &sv)
     return s;
 }
 
-} // namespace zerom2m
+inline bool StringViewEquals(StringView sv, const char *str)
+{
+    if (!str) return false;
+    size_t len = strlen(str);
+    if (sv.Length != len) return false;
+    for (size_t i = 0; i < len; ++i)
+        if (sv.Data[i] != str[i]) return false;
+    return true;
+}
+
+} // namespace zerom2m::compat

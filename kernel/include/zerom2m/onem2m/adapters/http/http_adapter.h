@@ -9,21 +9,21 @@
  */
 #pragma once
 
-#include "zerom2m/compat/collections.h"
 #include "zerom2m/http/http_handler.h"
 #include "zerom2m/http/http_types.h"
 #include "zerom2m/onem2m/onem2m_service.h"
 
-#include "zerom2m/codecs/auto_codec.h"
 #include "zerom2m/onem2m/types/resources.h"
+#include "zerom2m/serde/serde.h"
 
-#include <circle/types.h>
+#include "zerom2m/compat/optional.h"
+#include <circle/string.h>
 
 using namespace zerom2m::http;
 using namespace zerom2m::onem2m::types;
-using namespace zerom2m::compat;
 
-using zerom2m::codecs::AutoCodec;
+using zerom2m::compat::Optional;
+using zerom2m::serde::SerDe;
 
 namespace zerom2m::onem2m::adapters::http
 {
@@ -36,12 +36,11 @@ struct ParsedContentType {
 class HttpAdapter : public IHttpHandler
 {
 public:
-    explicit HttpAdapter(AutoCodec &codec, OneM2MService &service);
+    explicit HttpAdapter(OneM2MService &service);
 
     HttpResponse HandleRequest(const HttpRequest &req) override;
 
 private:
-    AutoCodec     &codec_;
     OneM2MService &service_;
 
     HttpRequest       encodeRequest(const RequestPrimitive &prim,
