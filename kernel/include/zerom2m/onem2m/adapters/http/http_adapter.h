@@ -10,7 +10,7 @@
 #pragma once
 
 #include "zerom2m/http/http_handler.h"
-#include "zerom2m/http/http_types.h"
+#include "zerom2m/http/types.h"
 #include "zerom2m/onem2m/onem2m_service.h"
 
 #include "zerom2m/onem2m/types/resources.h"

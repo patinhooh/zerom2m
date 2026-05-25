@@ -12,7 +12,7 @@
 #include "zerom2m/handlers/index_handler.h"
 #include "zerom2m/http/http_daemon.h"
 #include "zerom2m/http/http_handler.h"
-#include "zerom2m/http/http_types.h"
+#include "zerom2m/http/types.h"
 #include "zerom2m/http/router.h"
 #include "zerom2m/kernel_config.h"
 #include "zerom2m/onem2m/adapters/http/http_adapter.h"

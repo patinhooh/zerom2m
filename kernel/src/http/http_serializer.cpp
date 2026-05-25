@@ -7,8 +7,10 @@
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
-#include "zerom2m/http/http_serializer.h"
-#include "zerom2m/http/http_common.h"
+#include "http_serializer.h"
+
+#include <zerom2m/http/config.h>
+#include <zerom2m/http/types.h>
 
 #include <circle/logger.h>
 #include <circle/string.h>

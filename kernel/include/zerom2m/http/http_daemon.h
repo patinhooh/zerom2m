@@ -9,11 +9,9 @@
  */
 #pragma once
 
-#include "zerom2m/http/http_common.h"
-#include "zerom2m/http/http_handler.h"
-#include "zerom2m/http/http_parser.h"
-#include "zerom2m/http/http_serializer.h"
-#include "zerom2m/http/http_types.h"
+#include <zerom2m/http/config.h>
+#include <zerom2m/http/http_handler.h>
+#include <zerom2m/http/types.h>
 
 #include <circle/net/ipaddress.h>
 #include <circle/net/netsubsystem.h>

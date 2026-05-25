@@ -9,7 +9,7 @@
  */
 #pragma once
 
-#include "zerom2m/http/http_types.h"
+#include <zerom2m/http/types.h>
 
 namespace zerom2m::http
 {
