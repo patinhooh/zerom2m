@@ -24,11 +24,11 @@ USEFLASHY = 1
 SERIALPORT = /dev/ttyUSB0
 
 # Command used to reboot the board through the serial interface
-# Requires rebuilding kernel/ if changed
+# Requires rebuilding zerom2m/ if changed
 REBOOTMAGIC = reboot
 
 # Baud rate used by the running program
-# Requires rebuilding kernel/ if changed
+# Requires rebuilding zerom2m/ if changed
 USERBAUD = 115200
 
 # Baud rate used when flashing firmware
@@ -46,7 +46,7 @@ FLASHBAUD = 921600
 # ==============================================================================
 # Circle & ZeroM2M configuration
 #
-# Any changes here require rebuilding circle and kernel
+# Any changes here require rebuilding circle and zerom2m
 # ==============================================================================
 
 # Raspberry Pi model

@@ -1,7 +1,7 @@
 # Boot Makefile
 
 ROOT_DIR ?= ..
-KERNEL_DIR ?= $(ROOT_DIR)/kernel
+ZEROM2M_DIR ?= $(ROOT_DIR)/zerom2m
 CIRCLE_DIR ?= $(ROOT_DIR)/third_party/circle
 
 FIRMWARE_HASH ?= bc7f439c234e19371115e07b57c366df59cc1bc7
@@ -41,7 +41,7 @@ FIRMWARE_NONFREE_LIST = \
 # Extract just the filenames for inclusion in copy/clean targets
 FIRMWARE_NONFREE_FILES := $(foreach x,$(FIRMWARE_NONFREE_LIST),$(firstword $(subst :, ,$(x))))
 
-CONFIG_FILES := cmdline.txt config.txt wpa_supplicant.conf kernel.cfg
+CONFIG_FILES := cmdline.txt config.txt wpa_supplicant.conf system.cfg
 
 TARGET := kernel8.img
 
@@ -74,14 +74,14 @@ zerom2m: firmware
 	@echo ">>>> Building ZeroM2M"
 	$(MAKE) -C $(ROOT_DIR) $(MAKEFLAGS)
 	@rm -f $(TARGET)
-	@cp $(KERNEL_DIR)/build/$(TARGET) .
+	@cp $(ZEROM2M_DIR)/build/$(TARGET) .
 	@echo
 	@echo "Now you can run 'make cp' target to copy the zerom2m to SD Card"
 
 clean-zerom2m:
 	@rm -f $(TARGET)
-# clean only the kernel build artifacts
-	$(MAKE) -C $(KERNEL_DIR) clean $(MAKEFLAGS)
+# clean only the zerom2m build artifacts
+	$(MAKE) -C $(ZEROM2M_DIR) clean $(MAKEFLAGS)
 
 # Build the bootloader so we can reboot and run other kernels without having to
 # touch SD Cards

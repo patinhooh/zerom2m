@@ -58,7 +58,7 @@ QEMU_BINARY = /path/to/qemu/build/qemu-system-aarch64
 
 ## Configure the project to be QEMU-safe
 
-Set the [boot/kernel.cfg](../boot/kernel.cfg) to the following for the networking section:
+Set the [boot/system.cfg](../boot/system.cfg) to the following for the networking section:
 
 ```cfg
 [network]
@@ -105,7 +105,7 @@ mkdir -p mnt
 # offset = 2048 sectors x 512 bytes = 1048576
 sudo mount -o loop,offset=1048576 sd.img mnt/
 
-# Build firmware + kernel
+# Fetch firmware
 cd ../boot
 make
 
@@ -120,7 +120,7 @@ sudo umount ../scripts/mnt/
 
 The helper script, using your patched QEMU, is located at [scripts/qemu.sh](../scripts/qemu.sh).
 
-Both kernel and root Makefile proviade a `qemu` will run the script:
+Both zerom2m and root Makefile provide a `qemu` target that will run the script:
 
 ```bash
 make qemu
