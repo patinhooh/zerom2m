@@ -10,7 +10,8 @@
 #pragma once
 
 // HTTP header name constants  (TS-0009 Table 6.2.2-1)
-namespace zerom2m::onem2m::adapters::http
+
+namespace zerom2m::onem2m::bindings::http
 {
 // Request + Response
 constexpr const char *ORIGIN          = "X-M2M-Origin"; // fr
@@ -49,4 +50,4 @@ constexpr const char *CONTENT_OFFSET   = "X-M2M-CNOT";       // cnot
 // Standard
 constexpr const char *CONTENT_TYPE = "Content-Type";
 constexpr const char *ACCEPT       = "Accept";
-} // namespace zerom2m::onem2m::adapters::http
+} // namespace zerom2m::onem2m::bindings::http

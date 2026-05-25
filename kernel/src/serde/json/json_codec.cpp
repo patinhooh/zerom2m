@@ -21,10 +21,7 @@ using namespace zerom2m::onem2m::types;
 using namespace zerom2m::onem2m::types::sn;
 using namespace zerom2m::compat;
 
-// ===========================================================================
 // Low-level helpers
-// ===========================================================================
-
 CString JsonCodec::GetString(const JsonValue &obj, const char *key) const
 {
     const JsonValue *v = obj.GetMember(key);

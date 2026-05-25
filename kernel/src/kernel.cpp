@@ -10,7 +10,8 @@
 #include "zerom2m/kernel.h"
 #include "zerom2m/blink_task.h"
 #include "zerom2m/config_parser.h"
-#include "zerom2m/zerom2m_server.h"
+
+#include <zerom2m/servers/http_server.h>
 
 #include <circle/net/netsubsystem.h>
 
@@ -197,9 +198,9 @@ ShutdownMode Kernel::Run()
 
     // TODO: Add a proper service manager which starts services based on config and manages their
     // lifecycle (restart on failure, etc.)
-    onem2m::OneM2MService   service;
+    onem2m::OneM2MService service;
 
-    new ZeroM2MServer(net_, &led_, &kernelConfig_, service, nullptr);
+    new servers::HttpServer(net_, &led_, &kernelConfig_, service, nullptr);
 
     while (true) {
         scheduler_.MsSleep(100);

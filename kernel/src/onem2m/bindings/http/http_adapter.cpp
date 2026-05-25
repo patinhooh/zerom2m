@@ -10,21 +10,20 @@
 #include "headers.h"
 
 #include <zerom2m/compat/types.h>
-#include <zerom2m/onem2m/adapters/http/http_adapter.h>
+#include <zerom2m/onem2m/bindings/http/http_adapter.h>
 #include <zerom2m/onem2m/types/enums.h>
 #include <zerom2m/onem2m/types/short_names.h>
 #include <zerom2m/serde/serde.h>
 
 #include <circle/logger.h>
 
+namespace zerom2m::onem2m::bindings::http
+{
+
 using namespace zerom2m::http;
 using namespace zerom2m::onem2m::types;
 using namespace zerom2m::compat;
-
 using zerom2m::serde::SerDe;
-
-namespace zerom2m::onem2m::adapters::http
-{
 
 HttpAdapter::HttpAdapter(OneM2MService &service)
     : service_(service)
@@ -506,4 +505,4 @@ ResponsePrimitive HttpAdapter::decodeResponse(const HttpResponse &h,
     return ResponsePrimitive{};
 }
 
-} // namespace zerom2m::onem2m::adapters::http
+} // namespace zerom2m::onem2m::bindings::http

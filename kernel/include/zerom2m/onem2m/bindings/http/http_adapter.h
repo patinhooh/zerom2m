@@ -18,14 +18,14 @@
 
 #include <circle/string.h>
 
+namespace zerom2m::onem2m::bindings::http
+{
+
 using namespace zerom2m::http;
 using namespace zerom2m::onem2m::types;
 
 using zerom2m::compat::Optional;
 using zerom2m::serde::SerDe;
-
-namespace zerom2m::onem2m::adapters::http
-{
 
 struct ParsedContentType {
     CString                mimeType;
@@ -63,4 +63,4 @@ private:
     ResponseStatusCode httpStatusToRsc(ResponseStatus httpStatus);
 };
 
-} // namespace zerom2m::onem2m::adapters::http
+} // namespace zerom2m::onem2m::bindings::http
