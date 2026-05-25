@@ -9,8 +9,9 @@
  */
 #pragma once
 
-#include "zerom2m/serde/codec.h"
 #include "json.h"
+
+#include <zerom2m/serde/codec.h>
 
 namespace zerom2m::serde::json
 {
@@ -101,4 +102,4 @@ private:
     void GetStringArray(const JsonValue &obj, const char *key, Vector<CString> &out) const;
 };
 
-} // namespace zerom2m::serde
+} // namespace zerom2m::serde::json

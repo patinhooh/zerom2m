@@ -9,9 +9,8 @@
  */
 #include "json/json_codec.h"
 
-#include "zerom2m/serde/serde.h"
-
 #include <zerom2m/onem2m/types/enums.h>
+#include <zerom2m/serde/serde.h>
 
 #include <circle/logger.h>
 

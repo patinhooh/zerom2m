@@ -9,12 +9,11 @@
  */
 #include "headers.h"
 
-#include "zerom2m/serde/serde.h"
-
 #include <zerom2m/compat/types.h>
 #include <zerom2m/onem2m/adapters/http/http_adapter.h>
 #include <zerom2m/onem2m/types/enums.h>
 #include <zerom2m/onem2m/types/short_names.h>
+#include <zerom2m/serde/serde.h>
 
 #include <circle/logger.h>
 
