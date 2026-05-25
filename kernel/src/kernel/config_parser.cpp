@@ -7,14 +7,14 @@
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
-#include "zerom2m/config_parser.h"
+#include <zerom2m/config/config_parser.h>
 
 #include <circle/logger.h>
 #include <circle/string.h>
 #include <circle/util.h>
 #include <fatfs/ff.h>
 
-namespace zerom2m
+namespace zerom2m::config
 {
 
 namespace
@@ -22,7 +22,7 @@ namespace
 const char FromConfigParser[] = "config_parser";
 } // namespace
 
-ConfigParser::ConfigParser(KernelConfig &config, CLogger &logger)
+ConfigParser::ConfigParser(SystemConfig &config, CLogger &logger)
     : config_(config)
     , logger_(logger)
 {

@@ -63,9 +63,9 @@ To configure the project, copy `Config.example.mk` to `Config.mk` and adjust the
 
 During the build process, this file is symlinked into the Circle directory as `third_party/circle/Config.mk`. This allows both Circle and the project to use the same configuration file for building and runtime settings remain consistent.
 
-### kernel.cfg
+### system.cfg
 
-[boot/kernel.cfg](boot/kernel.cfg) is the main configuration file for the kernel. It uses a simple INI-like format with sections and key-value pairs.  
+[boot/system.cfg](boot/system.cfg) is the main configuration file for the kernel. It uses a simple INI-like format with sections and key-value pairs.  
 The file is parsed at runtime by the kernel to configure various aspects of the system.
 
 > When mode is set to wifi, and kernel fails to connect to the Wi-Fi network, it will automatically fall back to Ethernet mode.

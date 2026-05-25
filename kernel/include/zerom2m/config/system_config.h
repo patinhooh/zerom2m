@@ -14,12 +14,12 @@
 #include <circle/string.h>
 #include <circle/types.h>
 
-namespace zerom2m
+namespace zerom2m::config
 {
 
 enum class NetworkMode { Auto, Wifi, Ethernet };
 
-struct KernelConfig {
+struct SystemConfig {
     struct {
         NetworkMode mode;
         CString     open_net_ssid;
@@ -42,7 +42,7 @@ struct KernelConfig {
         CString hostname;
     } system;
 
-    KernelConfig()
+    SystemConfig()
     {
         network.mode          = NetworkMode::Auto;
         network.open_net_ssid = "";

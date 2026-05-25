@@ -9,8 +9,7 @@
  */
 #pragma once
 
-#include "zerom2m/kernel_config.h"
-
+#include <zerom2m/config/system_config.h>
 #include <zerom2m/handlers/index_handler.h>
 #include <zerom2m/http/http_daemon.h>
 #include <zerom2m/http/http_handler.h>
@@ -23,7 +22,7 @@
 
 namespace zerom2m::servers
 {
-
+using zerom2m::config::SystemConfig;
 using zerom2m::http::HttpDaemon;
 using zerom2m::http::Router;
 using zerom2m::onem2m::OneM2MService;
@@ -43,7 +42,7 @@ public:
      */
     HttpServer(CNetSubSystem      *net,
                CActLED            *led,
-               const KernelConfig *config,
+               const SystemConfig *config,
                OneM2MService      &service,
                CSocket            *socket = nullptr);
 
@@ -51,7 +50,7 @@ public:
 
 private:
     CActLED            *led_;
-    const KernelConfig *config_{nullptr};
+    const SystemConfig *config_{nullptr};
     Router              router_;
     OneM2MService      &service_;
     // TODO: Move this index info into an AE from the node it self resource and serve it from there

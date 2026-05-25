@@ -7,10 +7,9 @@
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
-#include "zerom2m/kernel.h"
-#include "zerom2m/blink_task.h"
-#include "zerom2m/config_parser.h"
-
+#include <zerom2m/config/config_parser.h>
+#include <zerom2m/kernel/blink_task.h>
+#include <zerom2m/kernel/kernel.h>
 #include <zerom2m/servers/http_server.h>
 
 #include <circle/net/netsubsystem.h>
@@ -18,11 +17,13 @@
 // SD card
 #define DRIVE "SD:"
 #define FIRMWARE_PATH DRIVE "/firmware/"
-#define CONFIG_PATH DRIVE "/kernel.cfg"
+#define CONFIG_PATH DRIVE "/system.cfg"
 #define WPA_PATH DRIVE "/wpa_supplicant.conf"
 
 namespace zerom2m
 {
+
+using namespace zerom2m::config;
 
 namespace
 {
@@ -84,31 +85,31 @@ bool Kernel::Initialize()
         }
     }
 
-    ConfigParser parser(kernelConfig_, logger_);
+    ConfigParser parser(systemConfig_, logger_);
     if (!parser.Load(CONFIG_PATH)) {
         logger_.Write(FromKernel, LogWarning, "Could not load " CONFIG_PATH ", using defaults");
     } else {
         parser.DumpConfig();
     }
 
-    TNetDeviceType devType = (kernelConfig_.network.mode == NetworkMode::Wifi ||
-                              kernelConfig_.network.mode == NetworkMode::Auto)
+    TNetDeviceType devType = (systemConfig_.network.mode == NetworkMode::Wifi ||
+                              systemConfig_.network.mode == NetworkMode::Auto)
                                  ? NetDeviceTypeWLAN
                                  : NetDeviceTypeEthernet;
 
     // nullptr signals DHCP to CNetSubSystem
-    const u8 *ip      = kernelConfig_.network.dhcp ? nullptr : kernelConfig_.network.ip;
-    const u8 *netmask = kernelConfig_.network.dhcp ? nullptr : kernelConfig_.network.netmask;
-    const u8 *gateway = kernelConfig_.network.dhcp ? nullptr : kernelConfig_.network.gateway;
-    const u8 *dns     = kernelConfig_.network.dhcp ? nullptr : kernelConfig_.network.dns;
+    const u8 *ip      = systemConfig_.network.dhcp ? nullptr : systemConfig_.network.ip;
+    const u8 *netmask = systemConfig_.network.dhcp ? nullptr : systemConfig_.network.netmask;
+    const u8 *gateway = systemConfig_.network.dhcp ? nullptr : systemConfig_.network.gateway;
+    const u8 *dns     = systemConfig_.network.dhcp ? nullptr : systemConfig_.network.dns;
 
     if (ok) {
-        net_ = new CNetSubSystem(ip, netmask, gateway, dns, kernelConfig_.system.hostname, devType);
+        net_ = new CNetSubSystem(ip, netmask, gateway, dns, systemConfig_.system.hostname, devType);
     }
 
-    bool openNetEnabled = kernelConfig_.network.open_net_ssid.GetLength() > 0;
-    bool wifiEnabled    = kernelConfig_.network.mode == NetworkMode::Wifi ||
-                          kernelConfig_.network.mode == NetworkMode::Auto;
+    bool openNetEnabled = systemConfig_.network.open_net_ssid.GetLength() > 0;
+    bool wifiEnabled    = systemConfig_.network.mode == NetworkMode::Wifi ||
+                          systemConfig_.network.mode == NetworkMode::Auto;
 
     bool wifiOk = false;
     if (wifiEnabled && ok) {
@@ -117,7 +118,7 @@ bool Kernel::Initialize()
         if (wifiOk) {
             logger_.Write(FromKernel, LogNotice, "WLAN driver initialized");
             if (openNetEnabled) {
-                wifiOk = wlan_.JoinOpenNet(kernelConfig_.network.open_net_ssid);
+                wifiOk = wlan_.JoinOpenNet(systemConfig_.network.open_net_ssid);
                 if (wifiOk) logger_.Write(FromKernel, LogNotice, "Joining open network is enabled");
                 else logger_.Write(FromKernel, LogWarning, "Failed to join open network");
             }
@@ -132,10 +133,10 @@ bool Kernel::Initialize()
 
         delete net_;
         net_ = new CNetSubSystem(
-            ip, netmask, gateway, dns, kernelConfig_.system.hostname, NetDeviceTypeEthernet);
+            ip, netmask, gateway, dns, systemConfig_.system.hostname, NetDeviceTypeEthernet);
 
         // Override network mode in config to avoid confusion in other parts of the system
-        kernelConfig_.network.mode = NetworkMode::Ethernet;
+        systemConfig_.network.mode = NetworkMode::Ethernet;
     }
 
     if (ok) ok = net_->Initialize(FALSE);
@@ -190,8 +191,8 @@ ShutdownMode Kernel::Run()
         return ShutdownMode::Halt;
     }
 
-    if (kernelConfig_.network.mode == NetworkMode::Wifi ||
-        kernelConfig_.network.mode == NetworkMode::Auto) {
+    if (systemConfig_.network.mode == NetworkMode::Wifi ||
+        systemConfig_.network.mode == NetworkMode::Auto) {
         wlan_.DumpStatus();
     }
     logger_.Write(FromKernel, LogNotice, "Network is up");
@@ -200,7 +201,7 @@ ShutdownMode Kernel::Run()
     // lifecycle (restart on failure, etc.)
     onem2m::OneM2MService service;
 
-    new servers::HttpServer(net_, &led_, &kernelConfig_, service, nullptr);
+    new servers::HttpServer(net_, &led_, &systemConfig_, service, nullptr);
 
     while (true) {
         scheduler_.MsSleep(100);

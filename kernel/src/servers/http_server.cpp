@@ -29,7 +29,7 @@ const char FromHttpServer[] = "http_server";
 
 HttpServer::HttpServer(CNetSubSystem      *net,
                        CActLED            *led,
-                       const KernelConfig *config,
+                       const SystemConfig *config,
                        OneM2MService      &service,
                        CSocket            *socket)
     : HttpDaemon(net,

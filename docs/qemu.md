@@ -58,7 +58,7 @@ QEMU_BINARY = /path/to/qemu/build/qemu-system-aarch64
 
 ## Configure the project to be QEMU-safe
 
-Set the [boot/kernel.cfg](../boot/kernel.cfg) to the following for the networking section:
+Set the [boot/system.cfg](../boot/system.cfg) to the following for the networking section:
 
 ```cfg
 [network]

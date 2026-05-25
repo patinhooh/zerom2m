@@ -9,23 +9,23 @@
  */
 #pragma once
 
-#include "zerom2m/kernel_config.h"
+#include <zerom2m/config/system_config.h>
 
 #include <circle/logger.h>
 
-namespace zerom2m
+namespace zerom2m::config
 {
 
 class ConfigParser
 {
 public:
-    explicit ConfigParser(KernelConfig &config, CLogger &logger);
+    explicit ConfigParser(SystemConfig &config, CLogger &logger);
 
     bool Load(const char *path);
     void DumpConfig();
 
 private:
-    KernelConfig &config_;
+    SystemConfig &config_;
     CLogger      &logger_;
 
     void ParseLine(const char *section, char *line);

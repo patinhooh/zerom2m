@@ -9,7 +9,7 @@
  */
 #pragma once
 
-#include "zerom2m/kernel_config.h"
+#include <zerom2m/config/system_config.h>
 
 #include <SDCard/emmc.h>
 #include <circle/actled.h>
@@ -31,6 +31,8 @@
 
 namespace zerom2m
 {
+
+using zerom2m::config::SystemConfig;
 
 // Makefile CPPFLAGS
 #ifndef COMMIT_HASH
@@ -97,7 +99,7 @@ private:
     CUSBHCIDevice      usbHci_;
     CEMMCDevice        emmc_;
     FATFS              fileSystem_;
-    KernelConfig       kernelConfig_; // Kernel configuration loaded from file
+    SystemConfig       systemConfig_; // Kernel configuration loaded from file
     CBcm4343Device     wlan_;
     CNetSubSystem     *net_;
     CWPASupplicant     wpaSupplicant_;

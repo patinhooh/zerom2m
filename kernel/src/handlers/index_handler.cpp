@@ -15,6 +15,8 @@
 namespace zerom2m::handlers
 {
 
+using namespace zerom2m::config;
+
 namespace
 {
 
@@ -31,7 +33,7 @@ const char indexPage[] =
     "</html>";
 }
 
-IndexHandler::IndexHandler(const KernelConfig *cfg)
+IndexHandler::IndexHandler(const SystemConfig *cfg)
     : cfg_(cfg)
 {
 }

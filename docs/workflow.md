@@ -43,7 +43,7 @@ Go to the boot directory and edit the kernel configurations:
 ```bash
 cd boot
 # Edit the configuration file if needed
-nano kernel.cfg
+nano system.cfg
 ```
 
 If using Wi-Fi, adjust the network settings as needed:
