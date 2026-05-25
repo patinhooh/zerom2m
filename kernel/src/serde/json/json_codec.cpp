@@ -9,9 +9,8 @@
  */
 #include "json_codec.h"
 
-#include "zerom2m/onem2m/types/short_names.h"
-
 #include <zerom2m/compat/utils.h>
+#include <zerom2m/onem2m/types/short_names.h>
 
 #include <circle/logger.h>
 

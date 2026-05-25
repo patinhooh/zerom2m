@@ -7,14 +7,14 @@
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
-#include "zerom2m/onem2m/adapters/http/http_adapter.h"
-#include "zerom2m/onem2m/adapters/http/headers.h"
-#include "zerom2m/onem2m/types/enums.h"
+#include "headers.h"
 
-#include "zerom2m/onem2m/types/short_names.h"
 #include "zerom2m/serde/serde.h"
 
 #include <zerom2m/compat/types.h>
+#include <zerom2m/onem2m/adapters/http/http_adapter.h>
+#include <zerom2m/onem2m/types/enums.h>
+#include <zerom2m/onem2m/types/short_names.h>
 
 #include <circle/logger.h>
 

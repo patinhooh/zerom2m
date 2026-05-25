@@ -7,12 +7,13 @@
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
-#include <circle/logger.h>
+#include "json/json_codec.h"
 
-#include "zerom2m/onem2m/types/enums.h"
 #include "zerom2m/serde/serde.h"
 
-#include "json/json_codec.h"
+#include <zerom2m/onem2m/types/enums.h>
+
+#include <circle/logger.h>
 
 namespace zerom2m::serde
 {

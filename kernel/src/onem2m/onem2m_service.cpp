@@ -7,10 +7,9 @@
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
-#include "zerom2m/onem2m/onem2m_service.h"
-#include "zerom2m/onem2m/types/primitives.h"
-
 #include <zerom2m/compat/types.h>
+#include <zerom2m/onem2m/onem2m_service.h>
+#include <zerom2m/onem2m/types/primitives.h>
 
 #include <circle/logger.h>
 #include <circle/util.h>

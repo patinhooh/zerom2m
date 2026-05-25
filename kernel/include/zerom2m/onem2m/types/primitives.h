@@ -9,10 +9,9 @@
  */
 #pragma once
 
-#include "zerom2m/onem2m/types/enums.h"
-#include "zerom2m/onem2m/types/resources.h"
-
 #include <zerom2m/compat/types.h>
+#include <zerom2m/onem2m/types/enums.h>
+#include <zerom2m/onem2m/types/resources.h>
 
 // Minimal replacement for std::is_same_v (STDLIB_SUPPORT=0 builds). This provides the
 // is_same trait and is_same_v helper used below.
