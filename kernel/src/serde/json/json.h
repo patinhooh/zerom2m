@@ -10,10 +10,11 @@
 
 #pragma once
 
-#include "zerom2m/compat/types.h"
-#include "zerom2m/http/config.h"
 #define JSMN_HEADER
 #include "jsmn.h"
+
+#include <zerom2m/compat/types.h>
+#include <zerom2m/http/config.h>
 
 namespace zerom2m::serde::json
 {

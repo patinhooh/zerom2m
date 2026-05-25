@@ -14,7 +14,7 @@
 #include "zerom2m/onem2m/types/short_names.h"
 #include "zerom2m/serde/serde.h"
 
-#include "zerom2m/compat/types.h"
+#include <zerom2m/compat/types.h>
 
 #include <circle/logger.h>
 
@@ -220,8 +220,7 @@ RequestPrimitive HttpAdapter::decodeRequest(const HttpRequest &r)
     return prim;
 }
 
-HttpResponse HttpAdapter::encodeResponse(const ResponsePrimitive &rsp,
-                                         const CString           &contentType)
+HttpResponse HttpAdapter::encodeResponse(const ResponsePrimitive &rsp, const CString &contentType)
 {
     HttpResponse out;
 

@@ -9,7 +9,8 @@
  */
 #include "zerom2m/zerom2m_server.h"
 #include "zerom2m/handlers/index_handler.h"
-#include "zerom2m/http/router.h"
+
+#include <zerom2m/http/router.h>
 
 #include <assert.h>
 #include <circle/logger.h>

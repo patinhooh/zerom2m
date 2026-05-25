@@ -9,14 +9,16 @@
  */
 #pragma once
 
-#include "zerom2m/http/http_handler.h"
-#include "zerom2m/http/types.h"
 #include "zerom2m/onem2m/onem2m_service.h"
 
 #include "zerom2m/onem2m/types/resources.h"
 #include "zerom2m/serde/serde.h"
 
-#include "zerom2m/compat/optional.h"
+#include <zerom2m/compat/optional.h>
+
+#include <zerom2m/http/http_handler.h>
+#include <zerom2m/http/types.h>
+
 #include <circle/string.h>
 
 using namespace zerom2m::http;

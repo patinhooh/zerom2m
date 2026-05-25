@@ -9,7 +9,8 @@
  */
 #pragma once
 
-#include "zerom2m/http/config.h"
+#include <zerom2m/http/config.h>
+
 #include <circle/string.h>
 #include <circle/types.h>
 

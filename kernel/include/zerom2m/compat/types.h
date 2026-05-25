@@ -12,6 +12,6 @@
 #include <circle/string.h>
 #include <circle/types.h>
 
-#include "zerom2m/compat/optional.h"
-#include "zerom2m/compat/string_view.h"
-#include "zerom2m/compat/vector.h"
+#include <zerom2m/compat/optional.h>
+#include <zerom2m/compat/string_view.h>
+#include <zerom2m/compat/vector.h>

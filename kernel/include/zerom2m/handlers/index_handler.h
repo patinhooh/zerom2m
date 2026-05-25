@@ -9,8 +9,9 @@
  */
 #pragma once
 
-#include "zerom2m/http/http_handler.h"
 #include "zerom2m/kernel_config.h"
+
+#include <zerom2m/http/http_handler.h>
 
 namespace zerom2m::handlers
 {

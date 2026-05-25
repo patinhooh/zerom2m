@@ -9,7 +9,7 @@
  */
 #pragma once
 
-#include "zerom2m/compat/types.h"
+#include <zerom2m/compat/types.h>
 #include "zerom2m/onem2m/types/primitives.h"
 #include "zerom2m/onem2m/types/resources.h"
 

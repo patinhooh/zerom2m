@@ -10,7 +10,8 @@
 #include "zerom2m/onem2m/types/primitives.h"
 #include "zerom2m/onem2m/types/resources.h"
 
-#include "zerom2m/compat/vector.h"
+#include <zerom2m/compat/vector.h>
+
 #include <circle/types.h>
 
 namespace zerom2m::onem2m

@@ -7,12 +7,14 @@
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
+
 #define JSMN_STATIC // keep jsmn symbols translation-unit-local
 #include "jsmn.h"
 
 #include "json.h"
 
-#include "zerom2m/compat/utils.h"
+#include <zerom2m/compat/utils.h>
+
 #include <circle/string.h>
 
 namespace zerom2m::serde::json
