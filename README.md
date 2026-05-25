@@ -57,7 +57,7 @@ See [Boot Makefile](docs/building.md#boot-makefile) and [Developing with the Boo
 
 ### Config.mk
 
-[Config.example.mk](Config.example.mk) provides a base configuration file containing both Circle and project-specific settings. This includes options such as the compiler toolchain prefix, target architecture, C++ standard, and kernel settings like the reboot magic word, serial port, and baud rates used for flashing and runtime communication.
+[Config.example.mk](Config.example.mk) provides a base configuration file containing both Circle and project-specific settings. This includes options such as the compiler toolchain prefix, target architecture, C++ standard, and build settings like the reboot magic word, serial port, and baud rates used for flashing and runtime communication.
 
 To configure the project, copy `Config.example.mk` to `Config.mk` and adjust the options as needed.
 
@@ -65,7 +65,7 @@ During the build process, this file is symlinked into the Circle directory as `t
 
 ### system.cfg
 
-[boot/system.cfg](boot/system.cfg) is the main configuration file for the kernel. It uses a simple INI-like format with sections and key-value pairs.  
+[boot/system.cfg](boot/system.cfg) is the main configuration file for the project. It uses a simple INI-like format with sections and key-value pairs.  
 The file is parsed at runtime by the kernel to configure various aspects of the system.
 
 > When mode is set to wifi, and kernel fails to connect to the Wi-Fi network, it will automatically fall back to Ethernet mode.

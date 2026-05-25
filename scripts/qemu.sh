@@ -8,7 +8,7 @@ if [ -f "$CONFIG_MK" ]; then
     QEMU_BINARY="${QEMU_BINARY/#\~/$HOME}"
 fi
 
-KERNEL_PATH="${1:-$SCRIPT_DIR/../kernel/build/kernel8.img}"
+KERNEL_PATH="${1:-$SCRIPT_DIR/../zerom2m/build/kernel8.img}"
 if [ ! -f "$KERNEL_PATH" ]; then
     echo "Error: kernel image not found at $KERNEL_PATH"
     exit 1

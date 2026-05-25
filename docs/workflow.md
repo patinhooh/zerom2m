@@ -5,7 +5,7 @@
 ## Table of Contents <!-- omit from toc -->
 
 - [Setup and Build](#setup-and-build)
-  - [Option 1: Deploying the Kernel](#option-1-deploying-the-kernel)
+  - [Option 1: Deploying the ZeroM2M](#option-1-deploying-the-zerom2m)
   - [Option 2: Developing with the Bootloader](#option-2-developing-with-the-bootloader)
   - [Option 3: Running with QEMU](#option-3-running-with-qemu)
 
@@ -38,7 +38,7 @@ make
 make -j$(nproc)
 ```
 
-Go to the boot directory and edit the kernel configurations:
+Go to the boot directory and edit the zerom2m configurations:
 
 ```bash
 cd boot
@@ -52,9 +52,9 @@ If using Wi-Fi, adjust the network settings as needed:
 cp wpa_supplicant.example.conf wpa_supplicant.conf
 ```
 
-At this point, you have three possible workflows depending on whether you want to deploy the kernel directly or work with the bootloader for development.
+At this point, you have three possible workflows depending on whether you want to deploy the zerom2m directly or work with the bootloader for development.
 
-### Option 1: Deploying the Kernel
+### Option 1: Deploying the ZeroM2M
 
 Prepare the boot files:
 
@@ -89,10 +89,10 @@ make cp DEST=/path/to/sd/card
 Eject the SD card and insert it into the Raspberry Pi to boot into the bootloader.  
 Now you can simply send new kernels through the serial terminal without needing to reflash the SD card.
 
-Make changes and Build the kernel:
+Make changes and Build the project:
 
 ```bash
-cd ../kernel
+cd ../zerom2m
 make
 ```
 

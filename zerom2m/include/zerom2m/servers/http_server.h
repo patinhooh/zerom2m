@@ -36,7 +36,7 @@ public:
      *
      * @param net Pointer to the network subsystem
      * @param led Pointer to the LED to control
-     * @param config Pointer to the kernel configuration
+     * @param config Pointer to the system configuration
      * @param socket Pointer to the socket for this instance.
      *               Pass nullptr for the first instance, which acts as the listener.
      */

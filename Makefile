@@ -4,11 +4,11 @@
 MAKEFLAGS += --no-print-directory
 
 CIRCLE_DIR ?= third_party/circle
-KERNEL_DIR ?= kernel
+ZEROM2M_DIR ?= zerom2m
 
-.PHONY: all circle kernel check-kernel clean clean-circle clean-kernel submodules flash monitor-putty monitor-minicom monitor-picocom qemu
+.PHONY: all circle zerom2m check-zerom2m clean clean-circle clean-zerom2m submodules flash monitor-putty monitor-minicom monitor-picocom qemu
 
-all: kernel
+all: zerom2m
 
 # Circle
 circle: $(CIRCLE_DIR)/Config.mk
@@ -63,17 +63,17 @@ submodules:
 		echo "circle not available, skipping hostap"; \
 	fi
 
-# Kernel
-kernel: circle
+# Zerom2m
+zerom2m: circle
 	@echo
-	@echo ">>>> Building Kernel"
-	$(MAKE) -C $(KERNEL_DIR) $(MAKEFLAGS)
+	@echo ">>>> Building Zerom2m"
+	$(MAKE) -C $(ZEROM2M_DIR) $(MAKEFLAGS)
 
-check-kernel:
-	$(MAKE) -C $(KERNEL_DIR) check $(MAKEFLAGS)
+check-zerom2m:
+	$(MAKE) -C $(ZEROM2M_DIR) check $(MAKEFLAGS)
 
 # Cleaning
-clean: clean-circle clean-kernel
+clean: clean-circle clean-zerom2m
 
 clean-circle: submodules
 	@echo
@@ -81,23 +81,23 @@ clean-circle: submodules
 	@cd $(CIRCLE_DIR) && ./makeall clean $(MAKEFLAGS)
 	@rm "$(CIRCLE_DIR)/Config.mk"
 
-clean-kernel:
+clean-zerom2m:
 	@echo
-	@echo "\n>>>> Cleaning Kernel"
-	$(MAKE) -C $(KERNEL_DIR) clean $(MAKEFLAGS)
+	@echo "\n>>>> Cleaning Zerom2m"
+	$(MAKE) -C $(ZEROM2M_DIR) clean $(MAKEFLAGS)
 
 # Tools
 flash:
-	$(MAKE) -C $(KERNEL_DIR) flash
+	$(MAKE) -C $(ZEROM2M_DIR) flash
 
 monitor-putty:
-	$(MAKE) -C $(KERNEL_DIR) monitor-putty
+	$(MAKE) -C $(ZEROM2M_DIR) monitor-putty
 
 monitor-minicom:
-	$(MAKE) -C $(KERNEL_DIR) monitor-minicom
+	$(MAKE) -C $(ZEROM2M_DIR) monitor-minicom
 
 monitor-picocom:
-	$(MAKE) -C $(KERNEL_DIR) monitor-picocom
+	$(MAKE) -C $(ZEROM2M_DIR) monitor-picocom
 
 qemu:
-	$(MAKE) -C $(KERNEL_DIR) qemu
+	$(MAKE) -C $(ZEROM2M_DIR) qemu

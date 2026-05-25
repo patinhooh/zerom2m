@@ -1,5 +1,5 @@
 /*
- * kernel_config.h
+ * system_config.h
  *
  * ZeroM2M
  * Copyright (C) 2026 ZeroM2M Authors
