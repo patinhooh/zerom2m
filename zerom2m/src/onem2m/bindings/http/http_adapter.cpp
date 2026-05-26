@@ -11,6 +11,7 @@
 
 #include <zerom2m/compat/types.h>
 #include <zerom2m/onem2m/bindings/http/http_adapter.h>
+#include <zerom2m/onem2m/onem2m_service.h>
 #include <zerom2m/onem2m/types/enums.h>
 #include <zerom2m/onem2m/types/short_names.h>
 #include <zerom2m/serde/serde.h>
@@ -24,11 +25,6 @@ using namespace zerom2m::http;
 using namespace zerom2m::onem2m::types;
 using namespace zerom2m::compat;
 using zerom2m::serde::SerDe;
-
-HttpAdapter::HttpAdapter(OneM2MService &service)
-    : service_(service)
-{
-}
 
 HttpResponse HttpAdapter::HandleRequest(const HttpRequest &req)
 {
@@ -49,7 +45,7 @@ HttpResponse HttpAdapter::HandleRequest(const HttpRequest &req)
     if (mimeType.GetLength() == 0) mimeType = req.GetHeaderValue(CONTENT_TYPE);
     if (mimeType.GetLength() == 0) mimeType = mime::JSON;
 
-    ResponsePrimitive resp = service_.HandleRequest(prim);
+    ResponsePrimitive resp = OneM2MService::Get().HandleRequest(prim);
     HttpResponse      out  = encodeResponse(resp, mimeType);
 
     CLogger::Get()->Write("http_adapter",

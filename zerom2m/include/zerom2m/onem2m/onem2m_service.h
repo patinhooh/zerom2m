@@ -23,10 +23,17 @@ using zerom2m::compat::Vector;
 
 class OneM2MService
 {
-
 public:
-    OneM2MService()  = default;
-    ~OneM2MService() = default;
+    static OneM2MService &Get()
+    {
+        static OneM2MService instance;
+        return instance;
+    }
+
+    OneM2MService(const OneM2MService &)            = delete;
+    OneM2MService &operator=(const OneM2MService &) = delete;
+    OneM2MService(OneM2MService &&)                 = delete;
+    OneM2MService &operator=(OneM2MService &&)      = delete;
 
     void              Initialize();
     ResponsePrimitive HandleRequest(const RequestPrimitive &request);
@@ -37,11 +44,16 @@ public:
     ResponsePrimitive Notify(const RequestPrimitive &request);
 
 private:
-    bool initialized_ = false;
+    OneM2MService()  = default;
+    ~OneM2MService() = default;
+
+    boolean initialized_ = false;
 
     // TODO: Add proper way of storing data.
-    // Simple in-memory DB abstraction. Stores PrimitiveContent objects representing
-    // created resources. This can later be replaced with a real database backend.
+    // Simple in-memory DB abstraction. Stores PrimitiveContent objects representing created
+    // resources. This will later be replaced with a real database backend.
+    // FIXME: We changed this to singleton so it could cause problems with concurrent access. Not
+    // the end of the world as task are cooperative, and single threaded.
     Vector<PrimitiveContent> db_;
     u32                      nextResourceId_ = 1;
 };

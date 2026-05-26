@@ -35,13 +35,9 @@ struct ParsedContentType {
 class HttpAdapter : public IHttpHandler
 {
 public:
-    explicit HttpAdapter(OneM2MService &service);
-
     HttpResponse HandleRequest(const HttpRequest &req) override;
 
 private:
-    OneM2MService &service_;
-
     HttpRequest       encodeRequest(const RequestPrimitive &prim,
                                     const CString          &baseUrl    = "",
                                     const CString          &acceptType = mime::JSON);

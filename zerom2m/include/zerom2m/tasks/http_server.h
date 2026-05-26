@@ -20,7 +20,7 @@
 #include <circle/actled.h>
 #include <circle/types.h>
 
-namespace zerom2m::servers
+namespace zerom2m::tasks
 {
 using zerom2m::config::SystemConfig;
 using zerom2m::http::HttpDaemon;
@@ -43,7 +43,6 @@ public:
     HttpServer(CNetSubSystem      *net,
                CActLED            *led,
                const SystemConfig *config,
-               OneM2MService      &service,
                CSocket            *socket = nullptr);
 
     ~HttpServer(void);
@@ -52,10 +51,9 @@ private:
     CActLED            *led_;
     const SystemConfig *config_{nullptr};
     Router              router_;
-    OneM2MService      &service_;
     // TODO: Move this index info into an AE from the node it self resource and serve it from there
     handlers::IndexHandler indexHandler_;
     HttpAdapter            httpAdapter_;
 };
 
-} // namespace zerom2m::servers
+} // namespace zerom2m::tasks

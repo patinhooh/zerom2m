@@ -7,17 +7,18 @@
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
-#include <zerom2m/kernel/blink_task.h>
+#include <zerom2m/tasks/blink_task.h>
 
 #include <circle/actled.h>
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
 
-namespace zerom2m
+namespace zerom2m::tasks
 {
 
-BlinkTask::BlinkTask(CActLED *led, unsigned intervalMs)
+BlinkTask::BlinkTask(CScheduler *scheduler, CActLED *led, unsigned intervalMs)
     : CTask()
+    , scheduler_(scheduler)
     , led_(led)
     , intervalMs_(intervalMs)
 {
@@ -29,11 +30,11 @@ void BlinkTask::Run()
 {
     while (true) {
         led_->On();
-        CScheduler::Get()->MsSleep(intervalMs_);
+        scheduler_->MsSleep(intervalMs_);
 
         led_->Off();
-        CScheduler::Get()->MsSleep(intervalMs_);
+        scheduler_->MsSleep(intervalMs_);
     }
 }
 
-} // namespace zerom2m
+} // namespace zerom2m::tasks

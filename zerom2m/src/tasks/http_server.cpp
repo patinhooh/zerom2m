@@ -10,14 +10,14 @@
 #include <zerom2m/handlers/index_handler.h>
 #include <zerom2m/http/router.h>
 #include <zerom2m/onem2m/onem2m_service.h>
-#include <zerom2m/servers/http_server.h>
+#include <zerom2m/tasks/http_server.h>
 
 #include <assert.h>
 #include <circle/logger.h>
 #include <circle/string.h>
 #include <circle/util.h>
 
-namespace zerom2m::servers
+namespace zerom2m::tasks
 {
 
 using zerom2m::onem2m::OneM2MService;
@@ -30,7 +30,6 @@ const char FromHttpServer[] = "http_server";
 HttpServer::HttpServer(CNetSubSystem      *net,
                        CActLED            *led,
                        const SystemConfig *config,
-                       OneM2MService      &service,
                        CSocket            *socket)
     : HttpDaemon(net,
                  &router_,
@@ -42,13 +41,9 @@ HttpServer::HttpServer(CNetSubSystem      *net,
     , led_(led)
     , config_(config)
     , router_()
-    , service_(service)
     , indexHandler_(config)
-    , httpAdapter_(service_)
+    , httpAdapter_()
 {
-    // Make sure the service is initialized before we start.
-    service_.Initialize();
-
     // Register handlers for different routes.
     router_.Register(http::RequestMethod::GET, "/m2m*", &httpAdapter_);
     router_.Register(http::RequestMethod::POST, "/m2m*", &httpAdapter_);
@@ -63,4 +58,4 @@ HttpServer::~HttpServer()
     config_ = nullptr;
 }
 
-} // namespace zerom2m::servers
+} // namespace zerom2m::tasks

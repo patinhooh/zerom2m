@@ -13,7 +13,7 @@
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
 
-namespace zerom2m
+namespace zerom2m::tasks
 {
 
 class BlinkTask : public CTask
@@ -25,7 +25,7 @@ public:
      * @param led Pointer to the LED device to blink
      * @param intervalMs Blink interval in milliseconds
      */
-    BlinkTask(CActLED *led, unsigned intervalMs);
+    BlinkTask(CScheduler *scheduler, CActLED *led, unsigned intervalMs);
 
     ~BlinkTask();
 
@@ -33,8 +33,9 @@ protected:
     void Run() override;
 
 private:
+    CScheduler *scheduler_;
     CActLED *led_;
     unsigned intervalMs_;
 };
 
-} // namespace zerom2m
+} // namespace zerom2m::tasks
