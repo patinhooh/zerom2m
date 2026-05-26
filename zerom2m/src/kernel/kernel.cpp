@@ -7,30 +7,29 @@
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
+#include "system_manager.h"
+
+#include <zerom2m/compat/shutdown_mode.h>
 #include <zerom2m/config/config_parser.h>
-#include <zerom2m/kernel/blink_task.h>
 #include <zerom2m/kernel/kernel.h>
-#include <zerom2m/servers/http_server.h>
+#include <zerom2m/kernel/network_manager.h>
 
-#include <circle/net/netsubsystem.h>
-
-// SD card
-#define DRIVE "SD:"
-#define FIRMWARE_PATH DRIVE "/firmware/"
-#define CONFIG_PATH DRIVE "/system.cfg"
-#define WPA_PATH DRIVE "/wpa_supplicant.conf"
-
-namespace zerom2m
+namespace zerom2m::kernel
 {
 
+using zerom2m::compat::ShutdownMode;
 using namespace zerom2m::config;
 
 namespace
 {
-const char            FromKernel[]    = "kernel";
-volatile ShutdownMode shutdownRequest = ShutdownMode::None;
+const char FromKernel[] = "kernel";
 
-void SetReboot() { shutdownRequest = ShutdownMode::Reboot; }
+SystemManager *gSystemManager = nullptr;
+
+void OnRebootMagic()
+{
+    if (gSystemManager != nullptr) gSystemManager->RequestShutdown(ShutdownMode::Reboot);
+}
 
 } // namespace
 
@@ -41,14 +40,10 @@ Kernel::Kernel()
     , logger_(kernelOptions_.GetLogLevel(), &timer_)
     , usbHci_(&interrupt_, &timer_)
     , emmc_(&interrupt_, &timer_, &led_)
-    , wlan_(FIRMWARE_PATH)
-    , net_(nullptr)
-    , wpaSupplicant_(WPA_PATH)
+    , networkManager_(timer_, scheduler_)
 {
     led_.Off(); // bootloader turns it on
 }
-
-Kernel::~Kernel() { delete net_; }
 
 bool Kernel::Initialize()
 {
@@ -67,12 +62,10 @@ bool Kernel::Initialize()
         ok = logger_.Initialize(logDevice);
         if (ok) {
             loggerOk = true;
-            logger_.Write(FromKernel, LogNotice, "ZeroM2M Kernel '%s'", COMMIT_HASH);
-            logger_.Write(FromKernel, LogNotice, "Compile time: " __DATE__ " " __TIME__);
-            logger_.Write(FromKernel,
-                          LogNotice,
-                          "Logger initialized with log level %u",
-                          kernelOptions_.GetLogLevel());
+            CLogger::Get()->Write(FromKernel, LogNotice, "ZeroM2M Kernel '%s'", COMMIT_HASH);
+            CLogger::Get()->Write(FromKernel, LogNotice, "Compile time: " __DATE__ " " __TIME__);
+            CLogger::Get()->Write(
+                FromKernel, LogNotice, "Logger level: %u", kernelOptions_.GetLogLevel());
         }
     }
 
@@ -80,138 +73,45 @@ bool Kernel::Initialize()
     if (ok) ok = emmc_.Initialize();
     if (ok) {
         if (f_mount(&fileSystem_, DRIVE, 1) != FR_OK) {
-            logger_.Write(FromKernel, LogError, "Cannot mount drive: %s", DRIVE);
+            CLogger::Get()->Write(FromKernel, LogError, "Cannot mount drive: %s", DRIVE);
             ok = false;
         }
     }
 
     ConfigParser parser(systemConfig_, logger_);
     if (!parser.Load(CONFIG_PATH)) {
-        logger_.Write(FromKernel, LogWarning, "Could not load " CONFIG_PATH ", using defaults");
+        CLogger::Get()->Write(
+            FromKernel, LogWarning, "Could not load " CONFIG_PATH ", using defaults");
     } else {
         parser.DumpConfig();
     }
 
-    TNetDeviceType devType = (systemConfig_.network.mode == NetworkMode::Wifi ||
-                              systemConfig_.network.mode == NetworkMode::Auto)
-                                 ? NetDeviceTypeWLAN
-                                 : NetDeviceTypeEthernet;
+    // Network init is fully delegated to NetworkManager
+    if (ok) ok = networkManager_.Initialize(systemConfig_);
 
-    // nullptr signals DHCP to CNetSubSystem
-    const u8 *ip      = systemConfig_.network.dhcp ? nullptr : systemConfig_.network.ip;
-    const u8 *netmask = systemConfig_.network.dhcp ? nullptr : systemConfig_.network.netmask;
-    const u8 *gateway = systemConfig_.network.dhcp ? nullptr : systemConfig_.network.gateway;
-    const u8 *dns     = systemConfig_.network.dhcp ? nullptr : systemConfig_.network.dns;
-
-    if (ok) {
-        net_ = new CNetSubSystem(ip, netmask, gateway, dns, systemConfig_.system.hostname, devType);
-    }
-
-    bool openNetEnabled = systemConfig_.network.open_net_ssid.GetLength() > 0;
-    bool wifiEnabled    = systemConfig_.network.mode == NetworkMode::Wifi ||
-                          systemConfig_.network.mode == NetworkMode::Auto;
-
-    bool wifiOk = false;
-    if (wifiEnabled && ok) {
-        wifiOk = wlan_.Initialize();
-
-        if (wifiOk) {
-            logger_.Write(FromKernel, LogNotice, "WLAN driver initialized");
-            if (openNetEnabled) {
-                wifiOk = wlan_.JoinOpenNet(systemConfig_.network.open_net_ssid);
-                if (wifiOk) logger_.Write(FromKernel, LogNotice, "Joining open network is enabled");
-                else logger_.Write(FromKernel, LogWarning, "Failed to join open network");
-            }
-        } else {
-            logger_.Write(FromKernel, LogWarning, "WLAN driver failed to initialize");
-        }
-    }
-
-    // Fall back to Ethernet
-    if (!wifiOk && wifiEnabled) {
-        logger_.Write(FromKernel, LogWarning, "Falling back to Ethernet");
-
-        delete net_;
-        net_ = new CNetSubSystem(
-            ip, netmask, gateway, dns, systemConfig_.system.hostname, NetDeviceTypeEthernet);
-
-        // Override network mode in config to avoid confusion in other parts of the system
-        systemConfig_.network.mode = NetworkMode::Ethernet;
-    }
-
-    if (ok) ok = net_->Initialize(FALSE);
-
-    if (ok) logger_.Write(FromKernel, LogNotice, "Network subsystem initialized");
-
-    if (ok && (openNetEnabled || wifiOk)) {
-        ok = wpaSupplicant_.Initialize();
-        if (ok) logger_.Write(FromKernel, LogNotice, "WPA supplicant started");
-        else logger_.Write(FromKernel, LogWarning, "WPA supplicant failed to start");
-    }
-
-    if (ok) {
-        logger_.Write(FromKernel, LogNotice, "Initialization succeeded");
-    } else if (loggerOk) {
-        logger_.Write(FromKernel, LogError, "Initialization failed");
+    if (ok) CLogger::Get()->Write(FromKernel, LogNotice, "Initialization succeeded");
+    else if (loggerOk) {
+        CLogger::Get()->Write(FromKernel, LogError, "Initialization failed");
         if (timerOk) timer_.MsDelay(1000);
     }
+
     return ok;
 }
 
 ShutdownMode Kernel::Run()
 {
-    logger_.Write(FromKernel, LogDebug, "Running kernel");
-    new BlinkTask(&led_, 1000); // Blink the LED every second to show the system is alive
-    logger_.Write(FromKernel, LogDebug, "Setting Reboot Magic to '%s'", REBOOTMAGIC);
-    serial_.RegisterMagicReceivedHandler(REBOOTMAGIC, SetReboot);
+    CLogger::Get()->Write(FromKernel, LogDebug, "Running kernel");
+    CLogger::Get()->Write(FromKernel, LogDebug, "Serial magic handler: %s", REBOOTMAGIC);
+    serial_.RegisterMagicReceivedHandler(REBOOTMAGIC, OnRebootMagic);
 
-    // XXX: Move this to a NetworkManager class which manages the network subsystem?
-    // Wait for the net subsystem to become fully running. Add diagnostics
-    // and a timeout so the system doesn't hang indefinitely.
-    const int maxWaitMs = 30000; // 30 seconds
-    int       waited    = 0;
-    while (net_ != nullptr && !net_->IsRunning() && waited < maxWaitMs) {
-        scheduler_.MsSleep(100);
-        waited += 1;
-        // Every 1 second
-        if ((waited % 10) == 0) {
-            logger_.Write(FromKernel, LogDebug, "Waiting for network: elapsed=%dms", waited);
-        }
-        scheduler_.Yield();
-    }
-    if (net_ == nullptr) {
-        logger_.Write(FromKernel, LogError, "Network subsystem pointer is null");
-        timer_.MsDelay(1000);
-        return ShutdownMode::Halt;
-    } else if (!net_->IsRunning()) {
-        logger_.Write(FromKernel, LogError, "Network failed to come up after %d ms", maxWaitMs);
-        // Do not start network services if network isn't running; halt so the
-        // issue can be diagnosed instead of continuing in a degraded state.
-        timer_.MsDelay(1000);
-        return ShutdownMode::Halt;
-    }
+    SystemManager sysMgr(led_, timer_, scheduler_, systemConfig_, networkManager_);
+    gSystemManager = &sysMgr;
 
-    if (systemConfig_.network.mode == NetworkMode::Wifi ||
-        systemConfig_.network.mode == NetworkMode::Auto) {
-        wlan_.DumpStatus();
-    }
-    logger_.Write(FromKernel, LogNotice, "Network is up");
+    // blocks until shutdown requested or fatal error occurs
+    ShutdownMode result = sysMgr.Run();
 
-    // TODO: Add a proper service manager which starts services based on config and manages their
-    // lifecycle (restart on failure, etc.)
-    onem2m::OneM2MService service;
-
-    new servers::HttpServer(net_, &led_, &systemConfig_, service, nullptr);
-
-    while (true) {
-        scheduler_.MsSleep(100);
-        if (shutdownRequest != ShutdownMode::None) {
-            logger_.Write(FromKernel, LogNotice, "Shutdown requested: %d", shutdownRequest);
-            timer_.MsDelay(1000);
-            return shutdownRequest;
-        }
-    }
-    return ShutdownMode::Halt;
+    gSystemManager = nullptr;
+    return result;
 }
 
-} // namespace zerom2m
+} // namespace zerom2m::kernel

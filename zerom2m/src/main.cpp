@@ -7,12 +7,13 @@
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
+#include <zerom2m/compat/shutdown_mode.h>
 #include <zerom2m/kernel/kernel.h>
 
 #include <circle/startup.h>
 
-using zerom2m::Kernel;
-using zerom2m::ShutdownMode;
+using zerom2m::compat::ShutdownMode;
+using zerom2m::kernel::Kernel;
 
 int main(void)
 {

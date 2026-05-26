@@ -9,7 +9,10 @@
  */
 #pragma once
 
+#include <zerom2m/compat/shutdown_mode.h>
 #include <zerom2m/config/system_config.h>
+#include <zerom2m/kernel/network_manager.h>
+#include <zerom2m/kernel/paths.h>
 
 #include <SDCard/emmc.h>
 #include <circle/actled.h>
@@ -18,7 +21,6 @@
 #include <circle/interrupt.h>
 #include <circle/koptions.h>
 #include <circle/logger.h>
-#include <circle/net/netsubsystem.h>
 #include <circle/sched/scheduler.h>
 #include <circle/screen.h>
 #include <circle/serial.h>
@@ -26,28 +28,23 @@
 #include <circle/types.h>
 #include <circle/usb/usbhcidevice.h>
 #include <fatfs/ff.h>
-#include <wlan/bcm4343.h>
-#include <wlan/hostap/wpa_supplicant/wpasupplicant.h>
 
-namespace zerom2m
+namespace zerom2m::kernel
 {
 
+using zerom2m::compat::ShutdownMode;
 using zerom2m::config::SystemConfig;
 
 // Makefile CPPFLAGS
 #ifndef COMMIT_HASH
 #define COMMIT_HASH "unknown"
 #endif
-
 #ifndef REBOOTMAGIC
 #define REBOOTMAGIC "reboot"
 #endif
-
 #ifndef USERBAUD
 #define USERBAUD 115200
 #endif
-
-enum ShutdownMode { None, Halt, Reboot };
 
 class Kernel
 {
@@ -61,15 +58,14 @@ public:
 
     /**
      * @brief Destroy the Kernel
-     *
-     * Cleans up resources (destructors may be empty for some subsystems).
      */
-    ~Kernel();
+    ~Kernel() = default;
 
     /**
      * @brief Initialize all kernel subsystems
      *
-     * Initializes screen, serial, interrupt system, timer, logger, network, etc.
+     * Initializes screen, serial, interrupt system, timer, logger, USB, EMMC,
+     * filesystem, and network (via NetworkManager).
      *
      * @return true if initialization succeeded
      * @return false if initialization failed
@@ -79,15 +75,15 @@ public:
     /**
      * @brief Main kernel run loop
      *
-     * Starts scheduler, runs tasks, waits for shutdown requests.
+     * Hands off to SystemManager which starts services and monitors the system.
      *
-     * @return ShutdownMode Mode requested (Reboot, Halt, or None)
+     * @return ShutdownMode requested (Reboot or Halt)
      */
     ShutdownMode Run();
 
 private:
     CActLED            led_;
-    CKernelOptions     kernelOptions_; // Circle kernel options
+    CKernelOptions     kernelOptions_;
     CDeviceNameService deviceNameService_;
     CScreenDevice      screen_;
     CSerialDevice      serial_;
@@ -99,10 +95,8 @@ private:
     CUSBHCIDevice      usbHci_;
     CEMMCDevice        emmc_;
     FATFS              fileSystem_;
-    SystemConfig       systemConfig_; // Kernel configuration loaded from file
-    CBcm4343Device     wlan_;
-    CNetSubSystem     *net_;
-    CWPASupplicant     wpaSupplicant_;
+    SystemConfig       systemConfig_;
+    NetworkManager     networkManager_;
 };
 
-} // namespace zerom2m
+} // namespace zerom2m::kernel
