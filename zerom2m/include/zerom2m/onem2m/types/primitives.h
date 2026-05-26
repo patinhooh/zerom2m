@@ -507,9 +507,14 @@ inline bool isValid(const RequestPrimitive &req, CString &errMsg)
         errMsg = "Missing mandatory parameter: to";
         return false;
     }
+    // The 'from' (originator) is mandatory for most operations, but some
+    // bindings/operations (notably Create during AE self-registration) may
+    // omit it. Allow empty originator for Create requests.
     if (req.from.GetLength() == 0) {
-        errMsg = "Missing mandatory parameter: from (fr)";
-        return false;
+        if (req.op != Operation::Create) {
+            errMsg = "Missing mandatory parameter: from (fr)";
+            return false;
+        }
     }
     if (req.requestIdentifier.GetLength() == 0) {
         errMsg = "Missing mandatory parameter: requestIdentifier (rqi)";

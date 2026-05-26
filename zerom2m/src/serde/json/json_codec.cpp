@@ -655,6 +655,12 @@ boolean JsonCodec::DeserializeAE(const JsonValue &root, RequestPrimitive &out) c
     GetOptString(*ae, attr::EXPIRATION_TIME, r.expirationTime);
     GetStringArray(*ae, attr::LABELS, r.labels);
 
+    // Detect out-of-spec attributes that must be rejected during Create (e.g. 'cr').
+    // Propagate a marker in the primitive so service logic can return BadRequest.
+    if (ae->GetMember(attr::CREATOR)) {
+        out.vendorInformation = CString("has_creator");
+    }
+
     out.content = r;
     return true;
 }
