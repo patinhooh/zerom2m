@@ -29,17 +29,30 @@ void OneM2MService::Initialize()
     nextResourceId_ = 1;
 
     CSEBase cse;
-    // TODO: Set more fields here. For now we just set some basic info
     cse.resourceType = ResourceType::CSEBase;
     cse.resourceName = "m2m";
-    cse.resourceID   = "/m2m";
+    cse.resourceID   = "m2m";
     cse.parentID     = "";
 
-    cse.creationTime     = "20240101T000000";
+    cse.creationTime     = "2026-01-01T00:00:00Z";
     cse.lastModifiedTime = cse.creationTime;
 
     cse.cseType = CSEType::IN_CSE;
     cse.cseID   = "/m2m";
+    cse.currentTime = cse.creationTime;
+    cse.supportedReleaseVersions.push_back("4");
+
+    // Only advertise the resource types currently supported by this project.
+    static const ResourceType kSupportedTypes[] = {
+        ResourceType::CSEBase,
+        ResourceType::AE,
+        ResourceType::Container,
+        ResourceType::ContentInstance,
+        ResourceType::Subscription,
+    };
+    for (ResourceType type : kSupportedTypes) {
+        cse.supportedResourceType.push_back(type);
+    }
 
     PrimitiveContent pc;
     pc = cse;
@@ -209,6 +222,12 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
 
     ResponsePrimitive resp;
 
+    const boolean isCseTarget = request.to.Compare("/m2m") == 0 || request.to.Compare("m2m") == 0;
+    if (isCseTarget && request.from.Compare("CAdmin") != 0) {
+        resp.responseStatusCode = ResponseStatusCode::LinkedSubscriptionNotExist;
+        return resp;
+    }
+
     // XXX: This is a very naive implementation. When we have a real database, we can do proper
     // lookups instead of iterating over everything like this.
     // Look up by full path: parentID + '/' + resourceName, or by resourceID
@@ -276,18 +295,28 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
 
 ResponsePrimitive OneM2MService::Update(const RequestPrimitive &request)
 {
-    // XXX: out of scope of this project
-    (void)request;
     ResponsePrimitive resp;
+
+    if (request.to.Compare("/m2m") == 0 || request.to.Compare("m2m") == 0) {
+        resp.responseStatusCode = ResponseStatusCode::OperationNotAllowed;
+        return resp;
+    }
+
+    // XXX: out of scope of this project
     resp.responseStatusCode = ResponseStatusCode::NotImplemented;
     return resp;
 }
 
 ResponsePrimitive OneM2MService::Delete(const RequestPrimitive &request)
 {
-    // XXX: out of scope of this project
-    (void)request;
     ResponsePrimitive resp;
+
+    if (request.to.Compare("/m2m") == 0 || request.to.Compare("m2m") == 0) {
+        resp.responseStatusCode = ResponseStatusCode::OperationNotAllowed;
+        return resp;
+    }
+
+    // XXX: out of scope of this project
     resp.responseStatusCode = ResponseStatusCode::NotImplemented;
     return resp;
 }

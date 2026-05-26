@@ -364,14 +364,12 @@ RequestMethod HttpAdapter::operationToMethod(Operation op)
             return RequestMethod::POST;
         case Operation::Retrieve:
             return RequestMethod::GET;
+        case Operation::Update:
+            return RequestMethod::PUT;
+        case Operation::Delete:
+            return RequestMethod::DELETE;
         case Operation::Notify:
             return RequestMethod::POST;
-        // XXX: we only support Create/Retrieve/Notify for now. PUT/DELETE are out of scope of
-        // this project.
-        // case Operation::Update:
-        //     return RequestMethod::PUT;
-        // case Operation::Delete:
-        //     return RequestMethod::DELETE;
         default:
             return RequestMethod::RequestMethodUnknown;
     }
@@ -384,12 +382,10 @@ Operation HttpAdapter::methodToOperation(RequestMethod method, boolean hasResour
             return hasResourceType ? Operation::Create : Operation::Notify;
         case RequestMethod::GET:
             return Operation::Retrieve;
-        // XXX: we only support Create/Retrieve/Notify for now. PUT/DELETE are out of scope of this
-        // project.
-        // case RequestMethod::PUT:
-        //     return Operation::Update;
-        // case RequestMethod::DELETE:
-        //     return Operation::Delete;
+        case RequestMethod::PUT:
+            return Operation::Update;
+        case RequestMethod::DELETE:
+            return Operation::Delete;
         default:
             return Operation::Unsupported;
     }
