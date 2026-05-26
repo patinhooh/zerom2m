@@ -24,7 +24,7 @@ const char FromNetworkManager[] = "netmgr";
 NetworkManager::NetworkManager(CTimer &timer, CScheduler &scheduler)
     : timer_(timer)
     , scheduler_(scheduler)
-    , wlan_(FIRMWARE_PATH)
+    , wlan_(WLAN_PATH)
     , net_(nullptr)
     , wpaSupplicant_(WPA_PATH)
 {

@@ -10,6 +10,6 @@
 #pragma once
 
 #define DRIVE "SD:"
-#define FIRMWARE_PATH DRIVE "/firmware/"
+#define WLAN_PATH DRIVE "/wlan/"
 #define WPA_PATH DRIVE "/wpa_supplicant.conf"
 #define CONFIG_PATH DRIVE "/system.cfg"

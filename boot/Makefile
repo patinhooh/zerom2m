@@ -3,6 +3,9 @@
 ROOT_DIR ?= ..
 ZEROM2M_DIR ?= $(ROOT_DIR)/zerom2m
 CIRCLE_DIR ?= $(ROOT_DIR)/third_party/circle
+FIRMWARE_DIR ?= ./firmware
+FIRMWARE_NONFREE_DIR ?= ./firmware/wlan
+
 
 FIRMWARE_HASH ?= bc7f439c234e19371115e07b57c366df59cc1bc7
 FIRMWARE_URL= https://github.com/raspberrypi/firmware/raw/$(FIRMWARE_HASH)/boot
@@ -47,25 +50,39 @@ TARGET := kernel8.img
 
 .DEFAULT_GOAL := zerom2m
 
+.PHONY: zerom2m bootloader firmware cp clean-zerom2m clean-bootloader clean-firmware
+
 cp:
 	@if [ -z "$(DEST)" ]; then \
 		echo "Usage: make cp DEST=/path/to/SDCARD"; \
 		exit 1; \
 	fi
-	@if [ ! -f "wpa_supplicant.conf" ]; then \
-		echo ">>> Please create a wpa_supplicant.conf file based on the wpa_supplicant.example.conf and run make again"; \
-		exit 1; \
-	fi
-	@for file in $(FIRMWARE_FILES) $(FIRMWARE_NONFREE_FILES) $(CONFIG_FILES) $(TARGET); do \
+	@for file in $(CONFIG_FILES); do \
 		if [ ! -f "$$file" ]; then \
-			echo "Error: Required file '$$file' not found. Please run 'bootloader' or 'zerom2m'."; \
+		echo ">>> Please create a $$file file based on the example and run make again"; \
+		exit 1; \
+		fi; \
+	done
+	@for file in $(FIRMWARE_FILES); do \
+		if [ ! -f "$(FIRMWARE_DIR)/$$file" ]; then \
+			echo "Error: Required file '$$file' not found. Please run 'bootloader', 'zerom2m' or 'firmware'."; \
 			exit 1; \
 		fi; \
 	done
+	@for file in $(FIRMWARE_NONFREE_FILES); do \
+		if [ ! -f "$(FIRMWARE_NONFREE_DIR)/$$file" ]; then \
+			echo "Error: Required file '$$file' not found. Please run 'bootloader', 'zerom2m' or 'firmware'."; \
+			exit 1; \
+		fi; \
+	done
+	@if [ ! -f  "$(TARGET)" ]; then \
+		echo "Error: Required file '$$file' not found. Please run 'bootloader' or 'zerom2m'."; \
+		exit 1; \
+	fi;
 	@echo "Copying firmware files to $(DEST)..."
-	@cp -v $(FIRMWARE_FILES) $(CONFIG_FILES) $(TARGET) $(DEST)
-	@mkdir -p $(DEST)/firmware
-	@cp -v $(FIRMWARE_NONFREE_FILES) $(DEST)/firmware
+	@cp -v $(addprefix $(FIRMWARE_DIR)/,$(FIRMWARE_FILES)) $(CONFIG_FILES) $(TARGET) $(DEST)
+	@mkdir -p $(DEST)/wlan
+	@cp -v $(addprefix $(FIRMWARE_NONFREE_DIR)/,$(FIRMWARE_NONFREE_FILES)) $(DEST)/wlan
 
 
 # Build the zerom2m kernel
@@ -101,32 +118,30 @@ clean-bootloader:
 firmware:
 	@echo
 	@echo ">>>> Downloading Firmware Files"
-	@for file in $(FIRMWARE_FILES) ; \
-	do \
-		if [ -f "$$file" ]; then \
+	@mkdir -p $(FIRMWARE_DIR) $(FIRMWARE_NONFREE_DIR)
+	@for file in $(FIRMWARE_FILES); do \
+		if [ -f "$(FIRMWARE_DIR)/$$file" ]; then \
 			echo "  '$$file' exists"; \
 			continue; \
 		fi; \
 		echo "  Downloading $$file"; \
-		wget -q -O $$file $(FIRMWARE_URL)/$$file ; \
+		wget -q -O $(FIRMWARE_DIR)/$$file $(FIRMWARE_URL)/$$file; \
 	done
-
-	@# Download non-free firmware files with explicit remote paths
 	@if [ -z "$(FIRMWARE_NONFREE_URL)" ]; then \
 		echo "  Skipping non-free firmware (no URL configured)"; \
 	else \
-		for entry in $(FIRMWARE_NONFREE_LIST) ; \
-		do \
+		for entry in $(FIRMWARE_NONFREE_LIST); do \
 			file=$$(printf '%s' "$$entry" | cut -d: -f1); \
 			path=$$(printf '%s' "$$entry" | cut -d: -f2-); \
-			if [ -f "$$file" ]; then \
+			if [ -f "$(FIRMWARE_NONFREE_DIR)/$$file" ]; then \
 				echo "  '$$file' exists"; \
 				continue; \
 			fi; \
 			echo "  Downloading $$file from $(FIRMWARE_NONFREE_URL)$$path"; \
-			wget -q -O $$file $(FIRMWARE_NONFREE_URL)$$path ; \
+			wget -q -O $(FIRMWARE_NONFREE_DIR)/$$file $(FIRMWARE_NONFREE_URL)$$path; \
 		done; \
 	fi
 
 clean-firmware:
-	rm -f $(FIRMWARE_FILES) $(FIRMWARE_NONFREE_FILES)
+	rm -f $(addprefix $(FIRMWARE_DIR)/,$(FIRMWARE_FILES))
+	rm -f $(addprefix $(FIRMWARE_NONFREE_DIR)/,$(FIRMWARE_NONFREE_FILES))

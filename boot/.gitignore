@@ -1,10 +1,5 @@
-LICENCE.broadcom
-COPYING.linux
-*.bin
-*.dtb
-*.elf
-*.dat
-*.img
-*.clm_blob
-*.txt
+kernel8.img
+cmdline.txt
+config.txt
+system.cfg
 wpa_supplicant.conf

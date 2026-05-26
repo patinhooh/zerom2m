@@ -38,17 +38,14 @@ make
 make -j$(nproc)
 ```
 
-Go to the boot directory and edit the zerom2m configurations:
+Go to the boot directory and edit the zerom2m [configurations](../README.md#configuration) as needed:
 
 ```bash
 cd boot
-# Edit the configuration file if needed
-nano system.cfg
-```
-
-If using Wi-Fi, adjust the network settings as needed:
-
-```bash
+# Edit then if needed
+cp cmdline.example.txt cmdline.txt
+cp config.example.txt config.txt
+cp system.example.cfg system.cfg
 cp wpa_supplicant.example.conf wpa_supplicant.conf
 ```
 
