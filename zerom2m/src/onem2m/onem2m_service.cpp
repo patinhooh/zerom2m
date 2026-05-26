@@ -27,6 +27,85 @@ CString NormalizePath(const CString &path)
     if (path.GetLength() > 0 && path.c_str()[0] == '/') return CString(path.c_str() + 1);
     return path;
 }
+
+const ResourceBase *GetResourceBase(const PrimitiveContent &pc)
+{
+    if (const auto *r = pc.GetIf<Container>()) return r;
+    if (const auto *r = pc.GetIf<ContentInstance>()) return r;
+    if (const auto *r = pc.GetIf<AE>()) return r;
+    if (const auto *r = pc.GetIf<Group>()) return r;
+    if (const auto *r = pc.GetIf<Subscription>()) return r;
+    if (const auto *r = pc.GetIf<AccessControlPolicy>()) return r;
+    if (const auto *r = pc.GetIf<CSEBase>()) return r;
+    return nullptr;
+}
+
+const PrimitiveContent *FindByResourceId(const Vector<PrimitiveContent> &db, const CString &rid)
+{
+    for (unsigned i = 0; i < db.GetCount(); ++i) {
+        const PrimitiveContent &pc = db[i];
+        const ResourceBase *base = GetResourceBase(pc);
+        if (base && base->resourceID.Compare(rid) == 0) return &pc;
+    }
+    return nullptr;
+}
+
+CString BuildFullPath(const Vector<PrimitiveContent> &db, const ResourceBase *rbase)
+{
+    if (!rbase) return CString();
+
+    CString full = "/";
+    full += rbase->resourceName;
+
+    CString parentId = rbase->parentID;
+    unsigned guard = 0;
+    while (parentId.GetLength() != 0 && guard++ < 32) {
+        const PrimitiveContent *parentPc = FindByResourceId(db, parentId);
+        if (!parentPc) break;
+        const ResourceBase *parentBase = GetResourceBase(*parentPc);
+        if (!parentBase) break;
+
+        CString newFull = "/";
+        newFull += parentBase->resourceName;
+        newFull += full;
+        full = newFull;
+        parentId = parentBase->parentID;
+    }
+
+    return full;
+}
+
+CString ResolveParentId(const Vector<PrimitiveContent> &db, const CString &rawTarget)
+{
+    CString normTarget = NormalizePath(rawTarget);
+
+    if (db.GetCount() > 0) {
+        if (const CSEBase *c = db[0].GetIf<CSEBase>()) {
+            CString cseFull = BuildFullPath(db, c);
+            if (normTarget.Compare("m2m") == 0 ||
+                normTarget.Compare(c->resourceID) == 0 ||
+                normTarget.Compare(c->resourceName) == 0 ||
+                NormalizePath(cseFull).Compare(normTarget) == 0) {
+                return c->resourceID;
+            }
+        }
+    }
+
+    for (unsigned i = 0; i < db.GetCount(); ++i) {
+        const PrimitiveContent &candidate = db[i];
+        const ResourceBase *base = GetResourceBase(candidate);
+        if (!base) continue;
+
+        CString full = BuildFullPath(db, base);
+        if (NormalizePath(full).Compare(normTarget) == 0 ||
+            base->resourceID.Compare(normTarget) == 0 ||
+            base->resourceName.Compare(normTarget) == 0) {
+            return base->resourceID;
+        }
+    }
+
+    return normTarget;
+}
 } // namespace
 
 void OneM2MService::Initialize(const SystemConfig &config)
@@ -119,6 +198,14 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
 
     CString target = NormalizePath(request.to);
 
+    if (request.from.GetLength() == 0) {
+        if (!request.resourceType.has_value() ||
+            request.resourceType.value() != ResourceType::AE) {
+            resp.responseStatusCode = ResponseStatusCode::BadRequest;
+            return resp;
+        }
+    }
+
     CString err;
     if (!isValid(request, err)) {
         resp.responseStatusCode = ResponseStatusCode::BadRequest;
@@ -137,11 +224,7 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
         id.Format("res%u", nextResourceId_++);
         res.resourceID = id;
         if (res.resourceName.GetLength() == 0) res.resourceName = id;
-        // Normalize parentID: strip leading '/' if present so stored 'pi' matches CSE ri
-        if (request.to.GetLength() > 0 && request.to.c_str()[0] == '/')
-            res.parentID = CString(request.to.c_str() + 1);
-        else
-            res.parentID = request.to;
+        res.parentID = ResolveParentId(db_, request.to);
     };
 
     // TODO: This is a bit clunky, but it works for now. We can later add a more elegant way of
@@ -152,6 +235,28 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
         Container r = *p;
         assignIdAndParent(r);
         r.resourceType = ResourceType::Container;
+
+        if (r.creationTime.GetLength() == 0) r.creationTime = "2026-01-01T00:00:00Z";
+        if (r.lastModifiedTime.GetLength() == 0) r.lastModifiedTime = r.creationTime;
+        if (!r.expirationTime.has_value()) r.expirationTime = CString("2027-01-01T00:00:00Z");
+        if (!r.stateTag.has_value()) r.stateTag = 0;
+
+        if (request.vendorInformation.has_value()) {
+            if (request.vendorInformation->Compare("cnt_creator_present") == 0) {
+                ResponsePrimitive bad;
+                bad.responseStatusCode = ResponseStatusCode::BadRequest;
+                return bad;
+            }
+            if (request.vendorInformation->Compare("cnt_creator_null") == 0) {
+                if (request.from.GetLength() == 0) {
+                    ResponsePrimitive bad;
+                    bad.responseStatusCode = ResponseStatusCode::BadRequest;
+                    return bad;
+                }
+                r.creator = request.from;
+            }
+        }
+
         pc             = r;
     } else if (auto p = pc.GetIf<ContentInstance>()) {
         ContentInstance r = *p;
@@ -452,6 +557,31 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
     // XXX: This is a very naive implementation. When we have a real database, we can do proper
     // lookups instead of iterating over everything like this.
     // Look up by full path: parentID + '/' + resourceName, or by resourceID
+    auto isAllowedForContainer = [&](const Container &cnt) -> bool {
+        if (request.from.Compare("CAdmin") == 0) return true;
+
+        CString current = cnt.parentID;
+        unsigned guard = 0;
+        while (current.GetLength() != 0 && guard++ < 32) {
+            const PrimitiveContent *pc = FindByResourceId(db_, current);
+            if (!pc) break;
+
+            if (const AE *ae = pc->GetIf<AE>()) {
+                return request.from.Compare(ae->aeID) == 0;
+            }
+            if (const Container *parentCnt = pc->GetIf<Container>()) {
+                current = parentCnt->parentID;
+                continue;
+            }
+            if (const CSEBase *cse = pc->GetIf<CSEBase>()) {
+                return request.from.Compare("CAdmin") == 0 ||
+                       request.from.Compare(cse->cseID) == 0;
+            }
+            break;
+        }
+        return false;
+    };
+
     for (unsigned i = 0; i < db_.GetCount(); ++i) {
         const PrimitiveContent &pc = db_[i];
 
@@ -460,26 +590,9 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
 
             CString target = NormalizePath(request.to);
 
-            CString parent = r->parentID;
-            CString name   = r->resourceName;
-            CString rid    = r->resourceID;
-
-            CString full;
-
-            if (parent.GetLength() != 0) {
-                // parent may already end with '/'
-                if (parent.c_str()[parent.GetLength() - 1] == '/') {
-                    full = parent;
-                    full += name;
-                } else {
-                    full = parent;
-                    full += "/";
-                    full += name;
-                }
-            } else {
-                full = "/";
-                full += name;
-            }
+            CString full = BuildFullPath(db_, r);
+            CString name = r->resourceName;
+            CString rid  = r->resourceID;
 
             if (NormalizePath(full).Compare(target) == 0 || rid.Compare(target) == 0 ||
                 name.Compare(target) == 0) {
@@ -489,6 +602,15 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
                 if (auto ae = pc.GetIf<AE>()) {
                     if (request.from.GetLength() == 0 || ae->aeID.GetLength() == 0 ||
                         request.from.Compare(ae->aeID) != 0) {
+                        ResponsePrimitive deny;
+                        deny.responseStatusCode =
+                            static_cast<ResponseStatusCode>(4103); // ORIGINATOR_HAS_NO_PRIVILEGE
+                        resp = deny;
+                        return true;
+                    }
+                }
+                if (auto cnt = pc.GetIf<Container>()) {
+                    if (!isAllowedForContainer(*cnt)) {
                         ResponsePrimitive deny;
                         deny.responseStatusCode =
                             static_cast<ResponseStatusCode>(4103); // ORIGINATOR_HAS_NO_PRIVILEGE

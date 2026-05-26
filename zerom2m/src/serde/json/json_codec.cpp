@@ -672,6 +672,13 @@ boolean JsonCodec::DeserializeContainer(const JsonValue &root, RequestPrimitive 
 
     Container r;
     r.resourceName = GetString(*cnt, attr::RESOURCE_NAME);
+    if (const JsonValue *cr = cnt->GetMember(attr::CREATOR)) {
+        if (cr->GetType() == JSON_NULL) {
+            out.vendorInformation = CString("cnt_creator_null");
+        } else {
+            out.vendorInformation = CString("cnt_creator_present");
+        }
+    }
     GetOptS64(*cnt, attr::MAX_NR_OF_INSTANCES, r.maxNrOfInstances);
     GetOptS64(*cnt, attr::MAX_BYTE_SIZE, r.maxByteSize);
     GetOptS64(*cnt, attr::MAX_INSTANCE_AGE, r.maxInstanceAge);
