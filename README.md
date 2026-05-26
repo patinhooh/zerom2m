@@ -105,6 +105,12 @@ This project uses the Circle bare-metal framework:
 - Circle: <https://github.com/rsta2/circle>  
   License: GNU General Public License v3.0 (GPL-3.0)
 
+This project includes test files from the ACME oneM2M CSE project:
+
+- ACME oneM2M CSE: <https://github.com/ankraft/ACME-oneM2M-CSE>  
+  License: BSD 3-Clause License  
+  See [LICENSE](./tests/LICENSE) for the full license text.
+
 ## License
 
 ZeroM2M is licensed under the GNU General Public License v3.0 (GPL-3.0).

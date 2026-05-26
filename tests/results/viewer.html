@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZeroM2M Report Viewer</title>
+<style>
+:root {
+  --bg: #151515;
+  --panel: #202020;
+  --panel-2: #303030;
+  --panel-3: #505050;
+  --line: #303030;
+  --text: #f8f8f0;
+  --muted: #757571;
+  --accent: #f92672;
+  --accent-2: #b7134f;
+  --success: #a6e22e;
+  --warning: #ffef62;
+  --danger: #f92672;
+  --danger-strong: #b00b00;
+  --shadow: 0 20px 50px rgba(0, 0, 0, 0.42);
+  --radius: 18px;
+  --mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  --ui: "DM Sans", "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--ui);
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(249, 38, 114, 0.10), transparent 28%),
+    radial-gradient(circle at top right, rgba(183, 19, 79, 0.10), transparent 24%),
+    linear-gradient(180deg, #151515 0%, #181818 36%, #101010 100%);
+}
+.app {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  height: 100%;
+}
+.sidebar {
+  border-right: 1px solid rgba(48, 48, 48, 0.9);
+  background:
+    linear-gradient(180deg, rgba(32, 32, 32, 0.95) 0%, rgba(21, 21, 21, 0.98) 100%);
+  padding: 22px;
+  overflow: auto;
+}
+.brand {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 18px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid rgba(48, 48, 48, 0.8);
+}
+.brand h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+.brand p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  max-width: 28ch;
+}
+.field {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+label {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+select, input, button {
+  font: inherit;
+}
+select, input {
+  width: 100%;
+  border: 1px solid rgba(48, 48, 48, 1);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 14px;
+  padding: 12px 14px;
+  outline: none;
+}
+select:focus, input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(249, 38, 114, 0.14);
+}
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+button {
+  border: 1px solid rgba(85, 85, 85, 0.9);
+  background: rgba(32, 32, 32, 0.95);
+  color: var(--text);
+  border-radius: 14px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+button:hover {
+  border-color: rgba(249, 38, 114, 0.7);
+  background: rgba(38, 38, 38, 0.98);
+}
+.primary-btn {
+  background: rgba(249, 38, 114, 0.12);
+  border-color: rgba(249, 38, 114, 0.55);
+}
+.primary-btn:hover {
+  border-color: rgba(249, 38, 114, 0.85);
+  background: rgba(249, 38, 114, 0.16);
+}
+.meta {
+  border: 1px solid rgba(48, 48, 48, 1);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(32, 32, 32, 1), rgba(21, 21, 21, 0.95));
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(48, 48, 48, 0.8);
+  font-size: 13px;
+}
+.meta-row:last-child { border-bottom: none; }
+.meta-row span:first-child { color: var(--muted); }
+.meta-row span:last-child {
+  font-family: var(--mono);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hint {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px dashed rgba(249, 38, 114, 0.34);
+  border-radius: 14px;
+  color: #d2d2c8;
+  font-size: 13px;
+  line-height: 1.5;
+  background: rgba(21, 21, 21, 0.72);
+}
+.viewer {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-width: 0;
+}
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(48, 48, 48, 0.8);
+  background: linear-gradient(180deg, rgba(32, 32, 32, 0.9), rgba(21, 21, 21, 0.92));
+}
+.title {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.title strong {
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+.title span {
+  color: var(--muted);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.link {
+  color: #f92672;
+  text-decoration: none;
+  font-size: 13px;
+  padding: 8px 12px;
+  border: 1px solid rgba(249, 38, 114, 0.30);
+  border-radius: 999px;
+  background: rgba(249, 38, 114, 0.08);
+}
+.link:hover {
+  color: #ffffff;
+  border-color: rgba(249, 38, 114, 0.55);
+}
+.frame-wrap {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  background: linear-gradient(180deg, rgba(32, 32, 32, 0.9), rgba(21, 21, 21, 0.92));
+}
+iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background:
+    radial-gradient(circle at top left, rgba(249, 38, 114, 0.10), transparent 28%),
+    radial-gradient(circle at top right, rgba(183, 19, 79, 0.10), transparent 24%),
+    linear-gradient(180deg, #151515 0%, #181818 36%, #101010 100%);
+}
+.loader {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: var(--muted);
+  background: linear-gradient(180deg, rgba(21, 21, 21, 0.16), rgba(21, 21, 21, 0.42));
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.loader.show { opacity: 1; }
+.section-card {
+  margin-top: 10px;
+  margin-bottom: 16px;
+  padding: 14px;
+  border: 1px solid rgba(48, 48, 48, 0.85);
+  border-radius: var(--radius);
+  background: rgba(32, 32, 32, 0.85);
+}
+.section-card:first-of-type {
+  margin-top: 0;
+}
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.section-heading h2 {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #d2d2c8;
+}
+.badge-pill {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: var(--text);
+  background: rgba(183, 19, 79, 0.14);
+  border: 1px solid rgba(249, 38, 114, 0.28);
+}
+.control-grid {
+  display: grid;
+  gap: 12px;
+}
+select {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+.mini-row {
+  display: flex;
+  gap: 10px;
+}
+.mini-row > * { flex: 1; }
+.mini-btn {
+  background: rgba(32, 32, 32, 0.95);
+}
+.mini-btn:nth-child(1) { border-color: rgba(183, 19, 79, 0.34); }
+.mini-btn:nth-child(2) { border-color: rgba(249, 38, 114, 0.34); }
+.mini-btn:nth-child(1):hover,
+.mini-btn:nth-child(2):hover {
+  background: rgba(38, 38, 38, 0.98);
+}
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.stat-card {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(48, 48, 48, 0.65);
+  border: 1px solid rgba(48, 48, 48, 0.95);
+}
+.stat-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.stat-value {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+}
+@media (max-width: 980px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
+  .topbar { padding: 16px 18px; }
+  .sidebar { padding: 18px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <h1>ZeroM2M Reports</h1>
+      <p>Pick a folder and browse the HTML reports inside it.</p>
+    </div>
+
+    <div class="section-card">
+      <div class="section-heading">
+        <h2>Source Folder</h2>
+        <span class="badge-pill">local files</span>
+      </div>
+      <div class="control-grid">
+        <div class="actions">
+          <button id="chooseFolderBtn" class="primary-btn" type="button">Choose Folder</button>
+          <button id="clearBtn" type="button">Clear</button>
+        </div>
+        <input id="folderPicker" type="file" webkitdirectory directory multiple hidden>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-heading">
+        <h2>Reports</h2>
+        <span class="badge-pill" id="reportCountBadge">0</span>
+      </div>
+      <div class="control-grid">
+        <div class="field">
+          <label for="reportSelect">Select report</label>
+          <select id="reportSelect"></select>
+        </div>
+
+        <div class="field">
+          <label for="reportSearch">Filter</label>
+          <input id="reportSearch" type="text" placeholder="Search by time or file name">
+        </div>
+
+        <div class="actions">
+          <button id="prevBtn" class="mini-btn" type="button">Previous</button>
+          <button id="nextBtn" class="mini-btn" type="button">Next</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-card meta">
+      <div class="section-heading">
+        <h2>Selection</h2>
+        <span class="badge-pill" style="background: rgba(183, 19, 79, 0.12); border-color: rgba(249, 38, 114, 0.22);">preview</span>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card"><span class="stat-label">Reports</span><span class="stat-value" id="reportCount">0</span></div>
+        <div class="stat-card"><span class="stat-label">Selected</span><span class="stat-value" id="selectedName">-</span></div>
+        <div class="stat-card" style="grid-column: 1 / -1;"><span class="stat-label">Path</span><span class="stat-value" id="selectedPath">-</span></div>
+      </div>
+    </div>
+
+    <div class="hint">
+      Choose the <span style="font-family:var(--mono)">results</span> folder, then select any HTML report from the list.
+    </div>
+  </aside>
+
+  <main class="viewer">
+    <div class="topbar">
+      <div class="title">
+        <strong id="pageTitle">Report Preview</strong>
+        <span id="pageSubtitle">Choose a folder to start.</span>
+      </div>
+      <a id="openDirectLink" class="link" href="#" target="_blank" rel="noreferrer">Open file directly</a>
+    </div>
+    <div class="frame-wrap">
+      <div id="loader" class="loader">Loading report…</div>
+      <iframe id="reportFrame" title="Report preview"></iframe>
+    </div>
+  </main>
+</div>
+<script>
+function humanLabel(file) {
+  const match = file.match(/run_(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})\.\d+\+00-00\.html$/);
+  if (!match) {
+    return file.replace(/^results\//, '').replace(/^run_/, '').replace(/\.html$/, '');
+  }
+  return `${match[1]} ${match[2]}:${match[3]}:${match[4]} UTC`;
+}
+
+const reportSelect = document.getElementById('reportSelect');
+const reportSearch = document.getElementById('reportSearch');
+const reportFrame = document.getElementById('reportFrame');
+const loader = document.getElementById('loader');
+const reportCount = document.getElementById('reportCount');
+const reportCountBadge = document.getElementById('reportCountBadge');
+const selectedName = document.getElementById('selectedName');
+const selectedPath = document.getElementById('selectedPath');
+const pageTitle = document.getElementById('pageTitle');
+const pageSubtitle = document.getElementById('pageSubtitle');
+const openDirectLink = document.getElementById('openDirectLink');
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+const chooseFolderBtn = document.getElementById('chooseFolderBtn');
+const clearBtn = document.getElementById('clearBtn');
+const folderPicker = document.getElementById('folderPicker');
+
+let reports = [];
+let filteredReports = [];
+let currentFolderToken = 0;
+
+function renderOptions() {
+  const currentValue = reportSelect.value;
+  reportSelect.innerHTML = '';
+
+  filteredReports.forEach(report => {
+    const option = document.createElement('option');
+    option.value = report.file;
+    option.textContent = report.label;
+    reportSelect.appendChild(option);
+  });
+
+  reportCount.textContent = String(filteredReports.length);
+  reportCountBadge.textContent = String(filteredReports.length);
+
+  if (filteredReports.length === 0) {
+    reportSelect.disabled = true;
+    selectedName.textContent = '-';
+    selectedPath.textContent = '-';
+    pageTitle.textContent = 'No reports match';
+    pageSubtitle.textContent = 'Clear the filter to see reports.';
+    openDirectLink.href = '#';
+    reportFrame.removeAttribute('src');
+    return;
+  }
+
+  reportSelect.disabled = false;
+  const restored = filteredReports.some(report => report.file === currentValue)
+    ? currentValue
+    : filteredReports[0].file;
+  reportSelect.value = restored;
+  syncSelection();
+}
+
+function syncSelection() {
+  const value = reportSelect.value;
+  if (!value) return;
+
+  const selected = reports.find(report => report.file === value);
+  if (!selected) return;
+
+  selectedName.textContent = selected.label;
+  selectedPath.textContent = selected.path;
+  pageTitle.textContent = selected.label;
+  pageSubtitle.textContent = selected.path;
+  openDirectLink.href = selected.url;
+  loader.classList.add('show');
+  reportFrame.src = selected.url;
+}
+
+function moveSelection(delta) {
+  if (filteredReports.length === 0) return;
+  const index = filteredReports.findIndex(report => report.file === reportSelect.value);
+  const nextIndex = (index + delta + filteredReports.length) % filteredReports.length;
+  reportSelect.value = filteredReports[nextIndex].file;
+  syncSelection();
+}
+
+function setEmptyState(title, subtitle) {
+  reportSelect.innerHTML = '';
+  reportSelect.disabled = true;
+  reportSearch.disabled = true;
+  prevBtn.disabled = true;
+  nextBtn.disabled = true;
+  selectedName.textContent = '-';
+  selectedPath.textContent = '-';
+  pageTitle.textContent = title;
+  pageSubtitle.textContent = subtitle;
+  openDirectLink.href = '#';
+  reportFrame.removeAttribute('src');
+  reportCount.textContent = '0';
+}
+
+function revokeReportUrls() {
+  for (const report of reports) {
+    if (report.url) URL.revokeObjectURL(report.url);
+  }
+}
+
+function loadFolder(files) {
+  const token = ++currentFolderToken;
+  revokeReportUrls();
+
+  const nextReports = [];
+  for (const file of files) {
+    if (!file.name.toLowerCase().endsWith('.html')) continue;
+    if (file.name === 'viewer.html') continue;
+
+    const relativePath = file.webkitRelativePath || file.name;
+    const label = humanLabel(file.name);
+    nextReports.push({
+      file: relativePath,
+      label,
+      path: relativePath,
+      url: URL.createObjectURL(file),
+    });
+  }
+
+  if (token !== currentFolderToken) {
+    for (const report of nextReports) {
+      URL.revokeObjectURL(report.url);
+    }
+    return;
+  }
+
+  reports = nextReports;
+  filteredReports = [...reports];
+  reportCount.textContent = String(reports.length);
+  reportCountBadge.textContent = String(reports.length);
+
+  reportSearch.disabled = reports.length === 0;
+  prevBtn.disabled = reports.length === 0;
+  nextBtn.disabled = reports.length === 0;
+
+  if (reports.length === 0) {
+    setEmptyState('No HTML reports found', 'Select a folder that contains the report HTML files.');
+    return;
+  }
+
+  reportSelect.disabled = false;
+  renderOptions();
+}
+
+chooseFolderBtn.addEventListener('click', () => folderPicker.click());
+clearBtn.addEventListener('click', () => {
+  currentFolderToken += 1;
+  revokeReportUrls();
+  reports = [];
+  filteredReports = [];
+  reportSearch.value = '';
+  reportSearch.disabled = true;
+  setEmptyState('Choose a folder', 'Open the results folder to load its HTML reports.');
+});
+folderPicker.addEventListener('change', () => {
+  const files = Array.from(folderPicker.files || []);
+  loadFolder(files);
+});
+
+reportSelect.addEventListener('change', syncSelection);
+reportSearch.addEventListener('input', () => {
+  const query = reportSearch.value.trim().toLowerCase();
+  filteredReports = reports.filter(report =>
+    report.file.toLowerCase().includes(query) || report.label.toLowerCase().includes(query)
+  );
+  renderOptions();
+});
+prevBtn.addEventListener('click', () => moveSelection(-1));
+nextBtn.addEventListener('click', () => moveSelection(1));
+reportFrame.addEventListener('load', () => loader.classList.remove('show'));
+
+setEmptyState('Choose a folder', 'Open the results folder to load its HTML reports.');
+</script>
+</body>
+</html>
