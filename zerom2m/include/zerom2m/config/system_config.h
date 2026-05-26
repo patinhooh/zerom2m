@@ -39,6 +39,12 @@ struct SystemConfig {
     } http;
 
     struct {
+        CString resource_name; // rn
+        CString resource_id;   // ri
+        CString cse_id;        // csi
+    } cse;
+
+    struct {
         CString hostname;
     } system;
 
@@ -56,8 +62,13 @@ struct SystemConfig {
         http.max_content_size = http::MAX_CONTENT_SIZE;
         http.timeout_seconds  = http::TIMEOUT_SECONDS;
         http.max_clients      = http::MAX_CLIENTS;
-        system.hostname       = "zerom2m";
+
+        cse.resource_name = "m2m";
+        cse.resource_id   = "m2m";
+        cse.cse_id        = "/m2m";
+
+        system.hostname = "zerom2m";
     }
 };
 
-} // namespace zerom2m
+} // namespace zerom2m::config

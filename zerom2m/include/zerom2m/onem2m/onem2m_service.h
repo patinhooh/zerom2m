@@ -11,6 +11,7 @@
 
 #include <zerom2m/compat/vector.h>
 #include <zerom2m/onem2m/types/primitives.h>
+#include <zerom2m/config/system_config.h>
 #include <zerom2m/onem2m/types/resources.h>
 
 #include <circle/types.h>
@@ -20,6 +21,7 @@ namespace zerom2m::onem2m
 
 using namespace zerom2m::onem2m::types;
 using zerom2m::compat::Vector;
+using zerom2m::config::SystemConfig;
 
 class OneM2MService
 {
@@ -35,7 +37,7 @@ public:
     OneM2MService(OneM2MService &&)                 = delete;
     OneM2MService &operator=(OneM2MService &&)      = delete;
 
-    void              Initialize();
+    void              Initialize(const SystemConfig &config);
     ResponsePrimitive HandleRequest(const RequestPrimitive &request);
     ResponsePrimitive Create(const RequestPrimitive &request);
     ResponsePrimitive Retrieve(const RequestPrimitive &request);

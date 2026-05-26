@@ -122,6 +122,13 @@ void ConfigParser::ParseLine(const char *section, char *line)
             logger_.Write(FromConfigParser, LogWarning, "Unknown http config key: '%s'", key);
         }
     }
+    // [cse]
+    else if (strcmp(section, "cse") == 0) {
+        if (strcmp(key, "resource_name") == 0) config_.cse.resource_name = value;
+        else if (strcmp(key, "resource_id") == 0) config_.cse.resource_id = value;
+        else if (strcmp(key, "cse_id") == 0) config_.cse.cse_id = value;
+        else logger_.Write(FromConfigParser, LogWarning, "Unknown cse config key: '%s'", key);
+    }
     // [system]
     else if (strcmp(section, "system") == 0) {
         if (strcmp(key, "hostname") == 0) config_.system.hostname = value;

@@ -8,6 +8,7 @@
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
 #include <zerom2m/compat/types.h>
+#include <zerom2m/config/system_config.h>
 #include <zerom2m/onem2m/onem2m_service.h>
 #include <zerom2m/onem2m/types/primitives.h>
 
@@ -18,8 +19,10 @@ namespace zerom2m::onem2m
 {
 
 using namespace zerom2m::onem2m::types;
+using zerom2m::config::SystemConfig;
 
-void OneM2MService::Initialize()
+
+void OneM2MService::Initialize(const SystemConfig &config)
 {
     CLogger::Get()->Write("onem2m_service", LogNotice, "Initialize() called");
 
@@ -30,15 +33,15 @@ void OneM2MService::Initialize()
 
     CSEBase cse;
     cse.resourceType = ResourceType::CSEBase;
-    cse.resourceName = "m2m";
-    cse.resourceID   = "m2m";
+    cse.resourceName = config.cse.resource_name;
+    cse.resourceID   = config.cse.resource_id;
     cse.parentID     = "";
 
     cse.creationTime     = "2026-01-01T00:00:00Z";
     cse.lastModifiedTime = cse.creationTime;
 
-    cse.cseType = CSEType::IN_CSE;
-    cse.cseID   = "/m2m";
+    cse.cseType     = CSEType::IN_CSE;
+    cse.cseID       = config.cse.cse_id;
     cse.currentTime = cse.creationTime;
     cse.supportedReleaseVersions.push_back("4");
 
