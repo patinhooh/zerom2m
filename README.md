@@ -65,8 +65,10 @@ During the build process, this file is symlinked into the Circle directory as `t
 
 ### system.cfg
 
-[boot/system.cfg](boot/system.cfg) is the main configuration file for the project. It uses a simple INI-like format with sections and key-value pairs.  
+[boot/system.example.cfg](boot/system.example.cfg) is the main configuration file for the project. It uses a simple INI-like format with sections and key-value pairs.  
 The file is parsed at runtime by the kernel to configure various aspects of the system.
+
+Copy this file to `boot/system.cfg` and edit the options as needed.
 
 > When mode is set to wifi, and kernel fails to connect to the Wi-Fi network, it will automatically fall back to Ethernet mode.
 
@@ -76,15 +78,19 @@ The file is parsed at runtime by the kernel to configure various aspects of the 
 
 ### cmdline.txt
 
-[boot/cmdline.txt](boot/cmdline.txt) is the Raspberry Pi boot command line file. It can contain multiple boot parameters.  
+[boot/cmdline.example.txt](boot/cmdline.example.txt) is the Raspberry Pi boot command line file. It can contain multiple boot parameters.  
 In this project it is currently used only to set the log output device.  
 If you want to see logs on a screen, simply remove this file from the SD Card.
 [third_party/circle/doc/cmdline.txt](third_party/circle/doc/cmdline.txt) has more details on the available options.
 
+Copy the example file to `boot/cmdline.txt` and edit the options as needed.
+
 ### config.txt
 
-[boot/config.txt](boot/config.txt) is the Raspberry Pi firmware configuration file.  
+[boot/config.example.txt](boot/config.example.txt) is the Raspberry Pi firmware configuration file.  
 It controls low-level boot settings such as the CPU mode, memory layout, enabled peripherals, and which kernel image is loaded.
+
+Copy the example file to `boot/config.txt` and edit the options as needed.
 
 ## Docs
 

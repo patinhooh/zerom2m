@@ -44,7 +44,7 @@ After building, `qemu-system-aarch64` will be at `build/qemu-system-aarch64`.
 
 ### Configure ZeroM2M to use the patched QEMU
 
-Create a local [Config.mk](../Config.mk) if you do not already have one:
+Create a local `Config.mk` if you do not already have one:
 
 ```bash
 cp Config.example.mk Config.mk
@@ -58,7 +58,7 @@ QEMU_BINARY = /path/to/qemu/build/qemu-system-aarch64
 
 ## Configure the project to be QEMU-safe
 
-Set the [boot/system.cfg](../boot/system.cfg) to the following for the networking section:
+Set the `boot/system.cfg` to the following for the networking section:
 
 ```cfg
 [network]
