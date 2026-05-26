@@ -232,6 +232,10 @@ JsonValue *JsonCodec::SerializeCSEBase(const CSEBase &r) const
 {
     JsonValue *obj = SerializeResourceBase(r);
 
+    if (!obj->GetMember(attr::PARENT_ID)) {
+        obj->AddMember(attr::PARENT_ID, new JsonValue(r.parentID));
+    }
+
     obj->AddMember(attr::CSE_TYPE, new JsonValue(static_cast<double>((u8)r.cseType)));
     obj->AddMember(attr::CSE_ID, new JsonValue(r.cseID));
     if (!r.supportedResourceType.empty()) {
@@ -650,6 +654,12 @@ boolean JsonCodec::DeserializeAE(const JsonValue &root, RequestPrimitive &out) c
     GetOptString(*ae, attr::NODE_LINK, r.nodeLink);
     GetOptString(*ae, attr::EXPIRATION_TIME, r.expirationTime);
     GetStringArray(*ae, attr::LABELS, r.labels);
+
+    // Detect out-of-spec attributes that must be rejected during Create (e.g. 'cr').
+    // Propagate a marker in the primitive so service logic can return BadRequest.
+    if (ae->GetMember(attr::CREATOR)) {
+        out.vendorInformation = CString("has_creator");
+    }
 
     out.content = r;
     return true;

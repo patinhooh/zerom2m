@@ -1,0 +1,11 @@
+[project]
+name = "tests"
+version = "0.1.0"
+description = "Testing for ZeroM2M, with ACME CSE tests."
+requires-python = ">=3.13"
+dependencies = [
+    "acmecse>=2026.5.1",
+    "isodate>=0.7.2",
+    "requests>=2.34.2",
+    "rich>=15.0.0",
+]

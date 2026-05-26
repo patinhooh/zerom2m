@@ -90,7 +90,7 @@ void SystemManager::StartServices()
     // the Circle scheduler automatically.
 
     // Make sure the service is initialized before we start.
-    onem2m::OneM2MService::Get().Initialize();
+    onem2m::OneM2MService::Get().Initialize(config_);
 
     new tasks::BlinkTask(&scheduler_, &led_, 1000);
     new tasks::HttpServer(&networkManager_.GetNetSubSystem(), &led_, &config_);
