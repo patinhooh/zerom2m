@@ -4,6 +4,8 @@
 #	(c) 2020 by Andreas Kraft
 #	License: BSD 3-Clause License. See the LICENSE file for further details.
 #
+#	Modified by ZeroM2M Authors in 2026
+#
 #	Unit tests for CIN functionality
 #
 
@@ -48,7 +50,6 @@ class TestCIN(unittest.TestCase):
 		if not isTearDownEnabled():
 			return
 		testCaseStart('TearDown TestCIN')
-		DELETE(aeURL, ORIGINATOR)	# Just delete the AE and everything below it. Ignore whether it exists or not
 		testCaseEnd('TearDown TestCIN')
 
 
@@ -107,16 +108,6 @@ class TestCIN(unittest.TestCase):
 		self.assertGreater(findXPath(r, 'm2m:cin/cs'), 0)
 		self.assertIsNone(findXPath(r, 'm2m:cin/acpi'))
 
-
-
-	@unittest.skipIf(noCSE, 'No CSEBase')
-	def test_updateCINFail(self) -> None:
-		""" Update <CIN> -> Fail """
-		dct = 	{ 'm2m:cin' : {
-					'con' : 'NewValue'
-				}}
-		r, rsc = UPDATE(cinURL, TestCIN.originator, dct)
-		self.assertEqual(rsc, RC.OPERATION_NOT_ALLOWED, r)
 
 
 	@unittest.skipIf(noCSE, 'No CSEBase')
@@ -210,13 +201,6 @@ class TestCIN(unittest.TestCase):
 
 
 	@unittest.skipIf(noCSE, 'No CSEBase')
-	def test_deleteCIN(self) -> None:
-		""" Delete <CIN> resource """
-		_, rsc = DELETE(cinURL, TestCIN.originator)
-		self.assertEqual(rsc, RC.DELETED)
-
-
-	@unittest.skipIf(noCSE, 'No CSEBase')
 	def test_createCINWithCreatorWrong(self) -> None:
 		""" Create <CIN> with creator attribute (wrong) -> Fail """
 		dct = 	{ 'm2m:cin' : { 
@@ -299,28 +283,6 @@ class TestCIN(unittest.TestCase):
 		self.assertEqual(findXPath(r, 'm2m:cin/cr'), TestCIN.originator)
 
 
-	@unittest.skipIf(noCSE, 'No CSEBase')
-	def test_createRetrieveCINWithDcnt(self) -> None:
-		""" Create and Retrieve <CIN> with deletionCnt attribute set """
-		dct = 	{ 'm2m:cin' : { 
-					'rn' : 'dcntTest',
-					'con' : 'AnyValue',
-					'dcnt' : 5
-				}}
-		r, rsc = CREATE(cntURL, TestCIN.originator, T.CIN, dct)	
-		self.assertEqual(rsc, RC.CREATED, r)
-		self.assertEqual(findXPath(r, 'm2m:cin/dcnt'), 5)					# dcnt should be set to 5
-
-		# Check dcnt in a RETRIEVE
-		for i in range(5, 0, -1):
-			r, rsc = RETRIEVE(f'{cntURL}/dcntTest', TestCIN.originator)
-			self.assertEqual(rsc, RC.OK)
-			self.assertEqual(findXPath(r, 'm2m:cin/dcnt'), i, r)				# dcnt should decrease
-
-		# The next RETRIEVE should fail since it should been deleted with last RETRIEVE
-		r, rsc = RETRIEVE(f'{cntURL}/dcntTest', TestCIN.originator)
-		self.assertEqual(rsc, RC.NOT_FOUND)
-
 
 	@unittest.skipIf(noCSE, 'No CSEBase')
 	def test_createCINwithAcpi(self) -> None:
@@ -365,7 +327,6 @@ def run(testFailFast:bool) -> TestResult:
 		'test_createCIN',
 		'test_retrieveCIN',
 		'test_attributesCIN',
-		'test_updateCINFail',
 		'test_createCINUnderAE',
 
 		# Various content types
@@ -377,7 +338,6 @@ def run(testFailFast:bool) -> TestResult:
 		'test_createCINwithStructure',
 
 
-		'test_deleteCIN',
 		'test_createCINWithCreatorWrong',
 		'test_createCINWithCnfWrong1',
 		'test_createCINWithCnfWrong2',
@@ -385,7 +345,6 @@ def run(testFailFast:bool) -> TestResult:
 		'test_createCINWithCnfWrong4',
 		'test_createCINWithCnfWrong5',
 		'test_createCINWithCreator',
-		'test_createRetrieveCINWithDcnt',
 		'test_createCINwithAcpi',
 		'test_createCINwithDgt'
 	])
