@@ -106,6 +106,40 @@ CString ResolveParentId(const Vector<PrimitiveContent> &db, const CString &rawTa
 
     return normTarget;
 }
+
+boolean IsValidContentInfo(const CString &contentInfo)
+{
+    if (contentInfo.GetLength() == 0) return true;
+
+    const char *text = contentInfo.c_str();
+    const char *slash = nullptr;
+    const char *colon = nullptr;
+    for (const char *p = text; *p != '\0'; ++p) {
+        if (*p == '/') {
+            if (slash != nullptr) return false;
+            slash = p;
+        } else if (*p == ':') {
+            if (colon != nullptr) return false;
+            colon = p;
+        }
+    }
+
+    if (!slash || !colon || slash > colon) return false;
+    if (slash == text || colon == slash + 1 || *(colon + 1) == '\0') return false;
+    if (strchr(colon + 1, ':') != nullptr) return false;
+
+    for (const char *p = colon + 1; *p != '\0'; ++p) {
+        if (*p < '0' || *p > '9') return false;
+    }
+
+    int charset = 0;
+    for (const char *p = colon + 1; *p != '\0'; ++p) {
+        charset = charset * 10 + (*p - '0');
+        if (charset > 8) return false;
+    }
+
+    return true;
+}
 } // namespace
 
 void OneM2MService::Initialize(const SystemConfig &config)
@@ -262,6 +296,58 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
         ContentInstance r = *p;
         assignIdAndParent(r);
         r.resourceType = ResourceType::ContentInstance;
+
+        if (!IsValidContentInfo(r.contentInfo.has_value() ? *r.contentInfo : CString())) {
+            ResponsePrimitive bad;
+            bad.responseStatusCode = ResponseStatusCode::BadRequest;
+            return bad;
+        }
+
+        if (r.creationTime.GetLength() == 0) r.creationTime = "2026-01-01T00:00:00Z";
+        if (r.lastModifiedTime.GetLength() == 0) r.lastModifiedTime = r.creationTime;
+        if (!r.expirationTime.has_value()) r.expirationTime = CString("2027-01-01T00:00:00Z");
+        if (!r.stateTag.has_value()) r.stateTag = 0;
+
+        // Creator handling: reject explicit creator value, allow null -> set to originator
+        if (request.vendorInformation.has_value()) {
+            if (request.vendorInformation->Compare("cin_creator_present") == 0) {
+                ResponsePrimitive bad;
+                bad.responseStatusCode = ResponseStatusCode::BadRequest;
+                return bad;
+            }
+            if (request.vendorInformation->Compare("cin_creator_null") == 0) {
+                if (request.from.GetLength() == 0) {
+                    ResponsePrimitive bad;
+                    bad.responseStatusCode = ResponseStatusCode::BadRequest;
+                    return bad;
+                }
+                r.creator = request.from;
+            }
+            if (request.vendorInformation->Compare("cin_has_acpi") == 0) {
+                ResponsePrimitive bad;
+                bad.responseStatusCode = ResponseStatusCode::BadRequest;
+                return bad;
+            }
+        }
+
+        // Validate parent: CIN must not be created under AE
+        CString parentId = r.parentID;
+        if (parentId.GetLength() != 0) {
+            const PrimitiveContent *parentPc = FindByResourceId(db_, parentId);
+            if (parentPc) {
+                if (parentPc->GetIf<AE>()) {
+                    ResponsePrimitive bad;
+                    bad.responseStatusCode = static_cast<ResponseStatusCode>(4108); // INVALID_CHILD_RESOURCE_TYPE
+                    return bad;
+                }
+            }
+        }
+
+        // Ensure contentSize is set (codec may have estimated it)
+        if (r.contentSize <= 0) {
+            r.contentSize = static_cast<s64>(r.content.GetLength());
+        }
+
         pc             = r;
     } else if (auto p = pc.GetIf<AE>()) {
         AE r = *p;

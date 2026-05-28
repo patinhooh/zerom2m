@@ -163,10 +163,19 @@ JsonValue *JsonCodec::SerializeContentInstance(const ContentInstance &r) const
 
     if (r.stateTag.has_value())
         obj->AddMember(attr::STATE_TAG, new JsonValue(static_cast<double>(*r.stateTag)));
+    if (r.creator.has_value()) obj->AddMember(attr::CREATOR, new JsonValue(*r.creator));
     if (r.contentInfo.has_value())
         obj->AddMember(attr::CONTENT_INFO, new JsonValue(*r.contentInfo));
     obj->AddMember(attr::CONTENT_SIZE, new JsonValue(static_cast<double>(r.contentSize)));
-    obj->AddMember(attr::CONTENT, new JsonValue(r.content));
+    if (r.content.GetLength() > 0) {
+        if (JsonValue *parsed = JsonDocument::Parse(r.content.c_str())) {
+            obj->AddMember(attr::CONTENT, parsed);
+        } else {
+            obj->AddMember(attr::CONTENT, new JsonValue(r.content));
+        }
+    } else {
+        obj->AddMember(attr::CONTENT, new JsonValue());
+    }
     if (r.dataGenerationTime.has_value())
         obj->AddMember(attr::DATA_GENERATION_TIME, new JsonValue(*r.dataGenerationTime));
 
@@ -697,12 +706,31 @@ boolean JsonCodec::DeserializeContentInstance(const JsonValue &root, RequestPrim
 
     ContentInstance r;
     r.resourceName = GetString(*cin, attr::RESOURCE_NAME);
+    if (const JsonValue *cr = cin->GetMember(attr::CREATOR)) {
+        if (cr->GetType() == JSON_NULL) {
+            out.vendorInformation = CString("cin_creator_null");
+        } else {
+            out.vendorInformation = CString("cin_creator_present");
+        }
+    }
+    if (cin->GetMember(attr::ACCESS_CONTROL_POLICY_IDS)) {
+        out.vendorInformation = CString("cin_has_acpi");
+    }
     GetOptString(*cin, attr::CONTENT_INFO, r.contentInfo);
-    r.content            = GetString(*cin, attr::CONTENT);
+    // Preserve the JSON text for con so it can round-trip as string, number, boolean, array or object.
+    const JsonValue *conV = cin->GetMember(attr::CONTENT);
+    if (conV) {
+        r.content = conV->Serialize();
+    }
     const JsonValue *csV = cin->GetMember(attr::CONTENT_SIZE);
     if (csV) {
         auto n = csV->GetNumber();
         if (n.has_value()) r.contentSize = static_cast<s64>(*n);
+    }
+    // If content size not provided, estimate from serialized content
+    if (!csV) {
+        if (r.content.GetLength() > 0) r.contentSize = static_cast<s64>(r.content.GetLength());
+        else r.contentSize = 0;
     }
     GetOptString(*cin, attr::DATA_GENERATION_TIME, r.dataGenerationTime);
     GetStringArray(*cin, attr::LABELS, r.labels);
