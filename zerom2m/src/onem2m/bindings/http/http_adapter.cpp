@@ -30,14 +30,14 @@ HttpResponse HttpAdapter::HandleRequest(const HttpRequest &req)
 {
     CString path = StringViewToCString(req.Path);
     CLogger::Get()->Write(
-        "http_adapter", LogNotice, "HTTP request method=%d path=%s", (int)req.Method, path.c_str());
+        "http_adapter", LogNotice, "HTTP request method=%d path=%s bodyLength=%d", (int)req.Method, path.c_str(), (int)req.BodyLength);
 
     RequestPrimitive prim = decodeRequest(req);
 
     CString errMsg;
     if (!isValid(prim, errMsg)) {
         CLogger::Get()->Write("http_adapter", LogWarning, "Invalid primitive: %s", errMsg.c_str());
-        ResponsePrimitive errResp = makeResponse(prim, ResponseStatusCode::BadRequest);
+        ResponsePrimitive errResp = makeResponse(prim, ResponseStatusCode::BAD_REQUEST);
         return encodeResponse(errResp, mime::JSON);
     }
 
@@ -243,7 +243,7 @@ HttpResponse HttpAdapter::encodeResponse(const ResponsePrimitive &rsp, const CSt
         out.AddHeader(TOKEN_REQ_INFO, *rsp.tokenRequestInformation);
 
     // Handle specific RESTful location behaviors
-    if (rsp.responseStatusCode == ResponseStatusCode::Created && rsp.to.GetLength() > 0) {
+    if (rsp.responseStatusCode == ResponseStatusCode::CREATED && rsp.to.GetLength() > 0) {
         out.AddHeader(CONTENT_LOCATION, rsp.to);
     }
 
@@ -394,85 +394,130 @@ Operation HttpAdapter::methodToOperation(RequestMethod method, boolean hasResour
 ResponseStatus HttpAdapter::rscToHttpStatus(ResponseStatusCode rsc)
 {
     switch (rsc) {
-        // 2xxx - success
         case ResponseStatusCode::OK:
+        case ResponseStatusCode::DELETED:
+        case ResponseStatusCode::UPDATED:
             return ResponseStatus::OK;
-        case ResponseStatusCode::Created:
+
+        case ResponseStatusCode::CREATED:
             return ResponseStatus::Created;
-        case ResponseStatusCode::Deleted:
-            return ResponseStatus::OK;
-        case ResponseStatusCode::Updated:
-            return ResponseStatus::OK;
 
-        // 4xxx - client errors
-        case ResponseStatusCode::BadRequest:
+        case ResponseStatusCode::ACCEPTED:
+        case ResponseStatusCode::ACCEPTED_NON_BLOCKING_REQUEST_SYNCH:
+        case ResponseStatusCode::ACCEPTED_NON_BLOCKING_REQUEST_ASYNCH:
+            return ResponseStatus::Accepted;
+
+        case ResponseStatusCode::BAD_REQUEST:
+        case ResponseStatusCode::CONTENTS_UNACCEPTABLE:
+        case ResponseStatusCode::GROUP_MEMBER_TYPE_INCONSISTENT:
+        case ResponseStatusCode::INVALID_SEMANTICS:
+        case ResponseStatusCode::INVALID_TRIGGER_PURPOSE:
+        case ResponseStatusCode::ILLEGAL_TRANSACTION_STATE_TRANSITION_ATTEMPTED:
+        case ResponseStatusCode::ONTOLOGY_MAPPING_POLICY_NOT_MATCHED:
+        case ResponseStatusCode::BAD_FACT_INPUTS_FOR_REASONING:
+        case ResponseStatusCode::BAD_RULE_INPUTS_FOR_REASONING:
+        case ResponseStatusCode::PRIMITIVE_PROFILE_BAD_REQUEST:
+        case ResponseStatusCode::INVALID_PROCESS_CONFIGURATION:
+        case ResponseStatusCode::INVALID_SPARQL_QUERY:
+        case ResponseStatusCode::MAX_NUMBER_OF_MEMBER_EXCEEDED:
+        case ResponseStatusCode::INVALID_CMDTYPE:
+        case ResponseStatusCode::INVALID_ARGUMENTS:
+        case ResponseStatusCode::INSUFFICIENT_ARGUMENTS:
             return ResponseStatus::BadRequest;
-        case ResponseStatusCode::NotPermitted:
+
+        case ResponseStatusCode::SUBSCRIPTION_CREATOR_HAS_NO_PRIVILEGE:
+        case ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE:
+        case ResponseStatusCode::RECEIVER_HAS_NO_PRIVILEGE:
+        case ResponseStatusCode::TARGET_NOT_SUBSCRIBABLE:
+        case ResponseStatusCode::SUBSCRIPTION_HOST_HAS_NO_PRIVILEGE:
+        case ResponseStatusCode::ORIGINATOR_NOT_AUTHENTICATED:
+        case ResponseStatusCode::SECURITY_ASSOCIATION_REQUIRED:
+        case ResponseStatusCode::INVALID_CHILD_RESOURCE_TYPE:
+        case ResponseStatusCode::NO_MEMBERS:
+        case ResponseStatusCode::ESPRIM_UNSUPPORTED_OPTION:
+        case ResponseStatusCode::ESPRIM_UNKNOWN_KEY_ID:
+        case ResponseStatusCode::ESPRIM_UNKNOWN_ORIG_RAND_ID:
+        case ResponseStatusCode::ESPRIM_UNKNOWN_RECV_RAND_ID:
+        case ResponseStatusCode::ESPRIM_BAD_MAC:
+        case ResponseStatusCode::ESPRIM_IMPERSONATION_ERROR:
+        case ResponseStatusCode::ORIGINATOR_HAS_ALREADY_REGISTERED:
+        case ResponseStatusCode::APP_RULE_VALIDATION_FAILED:
+        case ResponseStatusCode::OPERATION_DENIED_BY_REMOTE_ENTITY:
+        case ResponseStatusCode::SERVICE_SUBSCRIPTION_NOT_ESTABLISHED:
+        case ResponseStatusCode::DISCOVERY_LIMIT_EXCEEDED:
+        case ResponseStatusCode::PRIMITIVE_PROFILE_NOT_ACCESSIBLE:
+        case ResponseStatusCode::UNAUTHORIZED_USER:
+        case ResponseStatusCode::SERVICE_SUBSCRIPTION_NOT_ACTIVE:
+        case ResponseStatusCode::DISCOVERY_DENIED_BY_IPE:
+        case ResponseStatusCode::TARGET_HAS_NO_SESSION_CAPABILITY:
+        case ResponseStatusCode::SESSION_IS_ONLINE:
+        case ResponseStatusCode::TRIGGERING_DISABLED_FOR_RECIPIENT:
+        case ResponseStatusCode::TRANSACTION_PROCESSING_IS_INCOMPLETE:
+        case ResponseStatusCode::REQUESTED_ACTIVITY_PATTERN_NOT_PERMITTED:
             return ResponseStatus::Forbidden;
-        case ResponseStatusCode::NotFound:
+
+        case ResponseStatusCode::NOT_FOUND:
+        case ResponseStatusCode::ONTOLOGY_NOT_AVAILABLE:
+        case ResponseStatusCode::LINKED_SEMANTICS_NOT_AVAILABLE:
+        case ResponseStatusCode::MASHUP_MEMBER_NOT_FOUND:
+        case ResponseStatusCode::ONTOLOGY_MAPPING_ALGORITHM_NOT_AVAILABLE:
+        case ResponseStatusCode::ONTOLOGY_MAPPING_NOT_AVAILABLE:
+        case ResponseStatusCode::TARGET_NOT_REACHABLE:
+        case ResponseStatusCode::REMOTE_ENTITY_NOT_REACHABLE:
+        case ResponseStatusCode::EXTERNAL_OBJECT_NOT_REACHABLE:
+        case ResponseStatusCode::EXTERNAL_OBJECT_NOT_FOUND:
             return ResponseStatus::NotFound;
-        case ResponseStatusCode::OperationNotAllowed:
+
+        case ResponseStatusCode::OPERATION_NOT_ALLOWED:
             return ResponseStatus::MethodNotAllowed;
-        case ResponseStatusCode::RequestTimeout:
-            return ResponseStatus::RequestTimeout;
-        case ResponseStatusCode::Unsupported:
-            return ResponseStatus::UnsupportedMediaType;
-        case ResponseStatusCode::GroupMemberTypeInconsistent:
-            return ResponseStatus::BadRequest;
 
-        // 5xxx - server / conflict errors
-        case ResponseStatusCode::InternalServerError:
-            return ResponseStatus::InternalServerError;
-        case ResponseStatusCode::NotImplemented:
-            return ResponseStatus::NotImplemented;
-        case ResponseStatusCode::TargetNotReachable:
-            return ResponseStatus::ServiceUnavailable;
-        case ResponseStatusCode::NoPrivilege:
-            return ResponseStatus::Forbidden;
-        case ResponseStatusCode::AlreadyExists:
+        case ResponseStatusCode::NOT_ACCEPTABLE:
+            return ResponseStatus::NotAcceptable;
+
+        case ResponseStatusCode::GROUP_REQUEST_IDENTIFIER_EXISTS:
+        case ResponseStatusCode::CONFLICT:
+        case ResponseStatusCode::BLOCKING_SUBSCRIPTION_ALREADY_EXISTS:
+        case ResponseStatusCode::SOFTWARE_CAMPAIGN_CONFLICT:
+        case ResponseStatusCode::ALREADY_EXISTS:
+        case ResponseStatusCode::UNABLE_TO_REPLACE_REQUEST:
+        case ResponseStatusCode::UNABLE_TO_RECALL_REQUEST:
+        case ResponseStatusCode::ALREADY_COMPLETE:
+        case ResponseStatusCode::MGMT_COMMAND_NOT_CANCELLABLE:
             return ResponseStatus::Conflict;
-        case ResponseStatusCode::TargetNotSubscribable:
-            return ResponseStatus::UnprocessableContent;
-        case ResponseStatusCode::SubscriptionVerificationInitiated:
-            return ResponseStatus::OK;
-        case ResponseStatusCode::MaxNrOfChildresourcesExceeded:
-            return ResponseStatus::BadRequest;
-        case ResponseStatusCode::MaxNrOfMemberExceeded:
-            return ResponseStatus::BadRequest;
-        case ResponseStatusCode::FilterCriteriaNotImplemented:
-            return ResponseStatus::BadRequest;
+
+        case ResponseStatusCode::UNSUPPORTED_MEDIA_TYPE:
+            return ResponseStatus::UnsupportedMediaType;
+
+        case ResponseStatusCode::RELEASE_VERSION_NOT_SUPPORTED:
+        case ResponseStatusCode::SPECIALIZATION_SCHEMA_NOT_FOUND:
+        case ResponseStatusCode::NOT_IMPLEMENTED:
+            return ResponseStatus::NotImplemented;
+
+        case ResponseStatusCode::NON_BLOCKING_SYNCH_REQUEST_NOT_SUPPORTED:
+        case ResponseStatusCode::REQUEST_TIMEOUT:
+        case ResponseStatusCode::EXTERNAL_OBJECT_NOT_REACHABLE_BEFORE_RQET_TIMEOUT:
+        case ResponseStatusCode::EXTERNAL_OBJECT_NOT_REACHABLE_BEFORE_OET_TIMEOUT:
+            return ResponseStatus::GatewayTimeout;
+
+        case ResponseStatusCode::INTERNAL_SERVER_ERROR:
+        case ResponseStatusCode::SUBSCRIPTION_VERIFICATION_INITIATION_FAILED:
+        case ResponseStatusCode::GROUP_MEMBERS_NOT_RESPONDED:
+        case ResponseStatusCode::ESPRIM_DECRYPTION_ERROR:
+        case ResponseStatusCode::ESPRIM_ENCRYPTION_ERROR:
+        case ResponseStatusCode::SPARQL_UPDATE_ERROR:
+        case ResponseStatusCode::JOIN_MULTICAST_GROUP_FAILED:
+        case ResponseStatusCode::LEAVE_MULTICAST_GROUP_FAILED:
+        case ResponseStatusCode::CROSS_RESOURCE_OPERATION_FAILURE:
+        case ResponseStatusCode::ONTOLOGY_MAPPING_ALGORITHM_FAILED:
+        case ResponseStatusCode::ONTOLOGY_CONVERSION_FAILED:
+        case ResponseStatusCode::REASONING_PROCESSING_FAILED:
+        case ResponseStatusCode::MGMT_SESSION_CANNOT_BE_ESTABLISHED:
+        case ResponseStatusCode::MGMT_SESSION_ESTABLISHMENT_TIMEOUT:
+        case ResponseStatusCode::MGMT_CONVERSION_ERROR:
+        case ResponseStatusCode::MGMT_CANCELLATION_FAILED:
+        case ResponseStatusCode::NETWORK_QOS_CONFIG_ERROR:
         default:
             return ResponseStatus::InternalServerError;
-    }
-}
-
-ResponseStatusCode HttpAdapter::httpStatusToRsc(ResponseStatus httpStatus)
-{
-    // The real RSC always comes from X-M2M-RSC; HTTP status is secondary.
-    // This helper is a best-effort fallback when the header is absent.
-    switch (httpStatus) {
-        case ResponseStatus::OK:
-            return ResponseStatusCode::OK;
-        case ResponseStatus::Created:
-            return ResponseStatusCode::Created;
-        case ResponseStatus::BadRequest:
-            return ResponseStatusCode::BadRequest;
-        case ResponseStatus::Forbidden:
-            return ResponseStatusCode::NoPrivilege;
-        case ResponseStatus::NotFound:
-            return ResponseStatusCode::NotFound;
-        case ResponseStatus::MethodNotAllowed:
-            return ResponseStatusCode::OperationNotAllowed;
-        case ResponseStatus::Conflict:
-            return ResponseStatusCode::AlreadyExists;
-        case ResponseStatus::InternalServerError:
-            return ResponseStatusCode::InternalServerError;
-        case ResponseStatus::NotImplemented:
-            return ResponseStatusCode::NotImplemented;
-        case ResponseStatus::ServiceUnavailable:
-            return ResponseStatusCode::TargetNotReachable;
-        default:
-            return ResponseStatusCode::UnknownStatus;
     }
 }
 

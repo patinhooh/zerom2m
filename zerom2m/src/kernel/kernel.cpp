@@ -33,22 +33,6 @@ void OnRebootMagic()
     if (gSystemManager != nullptr) gSystemManager->RequestShutdown(ShutdownMode::Reboot);
 }
 
-void test_sqlite()
-{
-    sqlite3* db = nullptr;
-
-    int rc = sqlite3_initialize();
-    // should return SQLITE_OK (0)
-
-    rc = sqlite3_open(":memory:", &db);
-    // may fail OR may succeed depending on build flags
-
-    if (rc == SQLITE_OK)
-    {
-        sqlite3_close(db);
-    }
-}
-
 } // namespace
 
 Kernel::Kernel()
@@ -122,8 +106,6 @@ ShutdownMode Kernel::Run()
     CLogger::Get()->Write(FromKernel, LogDebug, "Serial magic handler: %s", REBOOTMAGIC);
     serial_.RegisterMagicReceivedHandler(REBOOTMAGIC, OnRebootMagic);
 
-    test_sqlite();
-    return ShutdownMode::Halt;
     SystemManager sysMgr(led_, timer_, scheduler_, systemConfig_, networkManager_);
     gSystemManager = &sysMgr;
 
