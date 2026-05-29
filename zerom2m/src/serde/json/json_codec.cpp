@@ -666,9 +666,7 @@ boolean JsonCodec::DeserializeAE(const JsonValue &root, RequestPrimitive &out) c
 
     // Detect out-of-spec attributes that must be rejected during Create (e.g. 'cr').
     // Propagate a marker in the primitive so service logic can return BadRequest.
-    if (ae->GetMember(attr::CREATOR)) {
-        out.vendorInformation = CString("has_creator");
-    }
+    if (ae->GetMember(attr::CREATOR)) { out.vendorInformation = CString("has_creator"); }
 
     out.content = r;
     return true;
@@ -717,11 +715,10 @@ boolean JsonCodec::DeserializeContentInstance(const JsonValue &root, RequestPrim
         out.vendorInformation = CString("cin_has_acpi");
     }
     GetOptString(*cin, attr::CONTENT_INFO, r.contentInfo);
-    // Preserve the JSON text for con so it can round-trip as string, number, boolean, array or object.
+    // Preserve the JSON text for con so it can round-trip as string, number, boolean, array or
+    // object.
     const JsonValue *conV = cin->GetMember(attr::CONTENT);
-    if (conV) {
-        r.content = conV->Serialize();
-    }
+    if (conV) { r.content = conV->Serialize(); }
     const JsonValue *csV = cin->GetMember(attr::CONTENT_SIZE);
     if (csV) {
         auto n = csV->GetNumber();
@@ -852,6 +849,9 @@ boolean JsonCodec::DeserializeRequestBody(const CString &input, RequestPrimitive
     if (input.GetLength() == 0) return false;
 
     JsonValue *root = JsonDocument::Parse(input.c_str());
+    // CLogger::Get()->Write(
+    //     "JsonCodec", LogDebug, "DeserializeRequestBody: parsed JSON:\n%s", root ?
+    //     root->Serialize().c_str() : "(null)");
     if (!root) return false;
 
     boolean ok = false;
