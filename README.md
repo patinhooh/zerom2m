@@ -105,6 +105,11 @@ This project uses the Circle bare-metal framework:
 - Circle: <https://github.com/rsta2/circle>  
   License: GNU General Public License v3.0 (GPL-3.0)
 
+This project includes SQLite:
+
+- SQLite: <https://www.sqlite.org>  
+  License: Public Domain
+
 This project includes test files from the ACME oneM2M CSE project:
 
 - ACME oneM2M CSE: <https://github.com/ankraft/ACME-oneM2M-CSE>  
