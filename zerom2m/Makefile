@@ -1,15 +1,18 @@
-# Kernel Makefile
-
+# ZeroM2M Makefile
 CIRCLE_DIR := ../third_party/circle
 # Circle is using this env var
 CIRCLEHOME := $(CIRCLE_DIR)
+
 
 BUILD := build
 
 TARGET := $(BUILD)/kernel8
 
 CPP_SRCS := $(shell find src -name '*.cpp')
-OBJS := $(CPP_SRCS:src/%.cpp=$(BUILD)/src/%.o)
+C_SRCS   := $(shell find src -name '*.c')
+CPP_OBJS := $(CPP_SRCS:src/%.cpp=$(BUILD)/src/%.o)
+C_OBJS   := $(C_SRCS:src/%.c=$(BUILD)/src/%.o)
+OBJS := $(CPP_OBJS) $(C_OBJS)
 
 # Link to Third-party Libraries
 LIBS := \
@@ -32,10 +35,21 @@ CPPFLAGS += -DCOMMIT_HASH=\"$(COMMIT_HASH)\"
 CPPFLAGS += -DREBOOTMAGIC=\"$(REBOOTMAGIC)\"
 CPPFLAGS += -DUSERBAUD=$(USERBAUD)
 
+# SQLite Flags
+CFLAGS += -I$(SQLITE_DIR)
+CFLAGS += -DSQLITE_OS_OTHER=1
+CFLAGS += -DSQLITE_THREADSAFE=0
+CFLAGS += -DSQLITE_MUTEX_NOOP=1
+CFLAGS += -DSQLITE_OMIT_LOAD_EXTENSION
+CFLAGS += -DSQLITE_OMIT_WAL
+CFLAGS += -DSQLITE_OMIT_AUTOINIT
+CFLAGS += -DSQLITE_OMIT_LOCALTIME
+
 # So we don't have warning from third party code
 CPPFLAGS += -isystem $(CIRCLE_DIR)/include
 
 CPPFLAGS += -Iinclude
+
 CPPFLAGS += -Wall -Wextra -Werror
 CPPFLAGS += -Wno-error=unused-parameter \
 	-Wno-error=unused-function \
@@ -59,11 +73,11 @@ $(BUILD)/%.o: %.c
 # Dependency generation
 $(BUILD)/%.d: %.cpp
 	@mkdir -p $(dir $@)
-	@$(CPP) $(CPPFLAGS) -M -MG -MT $(@:.d=.o) -MT $@ -MF $@ $<
+	@$(CPP) $(CPPFLAGS) -M -MT $(@:.d=.o) -MT $@ -MF $@ $<
 
 $(BUILD)/%.d: %.c
 	@mkdir -p $(dir $@)
-	@$(CC) $(CFLAGS) -M -MG -MT $(@:.d=.o) -MT $@ -MF $@ $<
+	@$(CC) $(CFLAGS) -M -MT $(@:.d=.o) -MT $@ -MF $@ $<
 
 EXTRACLEAN += $(shell find $(BUILD) -type f)
 
