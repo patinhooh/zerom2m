@@ -15,13 +15,188 @@
 #include <circle/logger.h>
 #include <circle/util.h>
 
+#include <string.h>
+
 namespace zerom2m::onem2m
 {
 
 using namespace zerom2m::onem2m::types;
 using zerom2m::config::SystemConfig;
 
-namespace {
+namespace
+{
+CString SliceCString(const char *start, size_t length)
+{
+    char *buf = new char[length + 1];
+    memcpy(buf, start, length);
+    buf[length] = '\0';
+    CString out(buf);
+    delete[] buf;
+    return out;
+}
+
+bool LooksLikeServiceProviderId(const CString &spid)
+{
+    const char *text = spid.c_str();
+    if (text == nullptr || *text == '\0') return false;
+    return strchr(text, '.') != nullptr || strchr(text, '-') != nullptr ||
+           strchr(text, ':') != nullptr;
+}
+
+bool ParseAddressingPath(const CString   &path,
+                         Vector<CString> &segments,
+                         bool            &absolute,
+                         bool            &networkPrefix,
+                         CString         &spid)
+{
+    segments.clear();
+    spid          = CString();
+    networkPrefix = false;
+    absolute      = false;
+
+    const char *raw = path.c_str();
+    if (raw == nullptr || raw[0] != '/') return false;
+
+    const size_t len = path.GetLength();
+    if (len > 1 && raw[len - 1] == '/') return false;
+
+    networkPrefix    = len > 2 && raw[1] == '~' && raw[2] == '/';
+    bool underscored = len > 2 && raw[1] == '_' && raw[2] == '/';
+    absolute         = (len > 1 && raw[1] == '/' && !networkPrefix) || underscored;
+    size_t pos       = networkPrefix ? 3 : (absolute ? (underscored ? 3 : 2) : 1);
+
+    if (absolute) {
+        size_t start = pos;
+        while (raw[pos] != '\0' && raw[pos] != '/') ++pos;
+        if (pos == start) return false;
+
+        spid = SliceCString(raw + start, pos - start);
+
+        // Only enforce FQDN-like check for // form; /_/ accepts any non-empty SPID token
+        if (!underscored && !LooksLikeServiceProviderId(spid)) return false;
+
+        if (raw[pos] != '/') return false;
+        ++pos;
+        if (raw[pos] == '\0') return false;
+    }
+
+    // For networkPrefix paths, peek at the first segment to detect
+    // absolute addressing: /~/spid/cseid/... vs SP-relative: /~/cseid/...
+    if (networkPrefix) {
+        size_t segStart = pos;
+        size_t segEnd   = pos;
+        while (raw[segEnd] != '\0' && raw[segEnd] != '/')
+            ++segEnd;
+        if (segEnd == segStart) return false;
+
+        CString firstSeg = SliceCString(raw + segStart, segEnd - segStart);
+        if (LooksLikeServiceProviderId(firstSeg)) {
+            // Absolute via /~/: extract SPID and mark as absolute
+            spid          = firstSeg;
+            absolute      = true;
+            networkPrefix = false; // treat remainder as normal after SPID extraction
+            pos           = segEnd;
+            if (raw[pos] != '/') return false;
+            ++pos;
+            if (raw[pos] == '\0') return false;
+        }
+        // else: SP-relative /~/cseid/... — leave pos as-is, parse normally
+    }
+
+    while (raw[pos] != '\0') {
+        size_t start = pos;
+        while (raw[pos] != '\0' && raw[pos] != '/')
+            ++pos;
+        if (pos == start) return false;
+
+        segments.push_back(SliceCString(raw + start, pos - start));
+
+        if (raw[pos] == '/') {
+            ++pos;
+            if (raw[pos] == '\0') return false;
+        }
+    }
+
+    return true;
+}
+
+CString CanonicalizeAddressingPath(const CString &path,
+                                   const CString &cseName,
+                                   const CString &cseId,
+                                   const CString &spid,
+                                   bool          &valid,
+                                   bool          &wrongSpid)
+{
+    valid     = false;
+    wrongSpid = false;
+
+    Vector<CString> segments;
+    CString         parsedSpid;
+    bool            absolute      = false;
+    bool            networkPrefix = false;
+    if (!ParseAddressingPath(path, segments, absolute, networkPrefix, parsedSpid)) return CString();
+
+    CString cseIdName = cseId;
+    if (cseIdName.GetLength() > 0 && cseIdName.c_str()[0] == '/') {
+        cseIdName = CString(cseIdName.c_str() + 1);
+    }
+
+    // Validate SPID for absolute addressing
+    if (absolute && parsedSpid.GetLength() > 0) {
+        CString knownSpid = spid;
+        if (knownSpid.Compare(parsedSpid) != 0) {
+            wrongSpid = true;
+            return CString();
+        }
+    }
+
+    unsigned start = 0;
+    if (absolute) {
+        // After SPID, remaining segments are: cseid/rn/... or cseid/ri
+        // segments[0] should be cseid, segments[1] the cseName or "-" or a resource
+        if (segments.GetCount() < 2) return CString(); // BAD_REQUEST: only cseid, no resource
+        if (segments[0].Compare(cseIdName) != 0) return CString();
+        start = 1; // skip the cseid segment
+    } else if (networkPrefix) {
+        // SP-relative: /~/cseid/...
+        if (segments.GetCount() == 0) return CString();
+        if (segments[0].Compare(cseIdName) != 0) return CString();
+        if (segments.GetCount() == 1) return CString(); // BAD_REQUEST: only cseid
+        // Unstructured shortcut: /~/cseid/ri (exactly 2 segments, second not cseName or "-")
+        if (segments.GetCount() == 2 && segments[1].Compare(cseIdName) != 0 &&
+            segments[1].Compare(cseName) != 0 && segments[1].Compare("-") != 0) {
+            CString out("/");
+            out.Append(segments[1].c_str());
+            valid = true;
+            return out;
+        }
+        start = 1; // skip cseid
+    } else if (segments.GetCount() >= 2 && segments[0].Compare(cseIdName) == 0 &&
+               (segments[1].Compare(cseIdName) == 0 || segments[1].Compare("-") == 0)) {
+        start = 1;
+    }
+
+    Vector<CString> normalized;
+    for (unsigned i = start; i < segments.GetCount(); ++i) {
+        if (i == start && segments[i].Compare("-") == 0) {
+            normalized.push_back(cseName);
+        } else {
+            normalized.push_back(segments[i]);
+        }
+    }
+
+    if (normalized.GetCount() == 0) return CString();
+
+    CString out("/");
+    for (unsigned i = 0; i < normalized.GetCount(); ++i) {
+        if (i > 0) out.Append("/");
+        out.Append(normalized[i].c_str());
+    }
+
+    valid = true;
+    return out;
+}
+
 CString NormalizePath(const CString &path)
 {
     if (path.GetLength() > 0 && path.c_str()[0] == '/') return CString(path.c_str() + 1);
@@ -43,8 +218,8 @@ const ResourceBase *GetResourceBase(const PrimitiveContent &pc)
 const PrimitiveContent *FindByResourceId(const Vector<PrimitiveContent> &db, const CString &rid)
 {
     for (unsigned i = 0; i < db.GetCount(); ++i) {
-        const PrimitiveContent &pc = db[i];
-        const ResourceBase *base = GetResourceBase(pc);
+        const PrimitiveContent &pc   = db[i];
+        const ResourceBase     *base = GetResourceBase(pc);
         if (base && base->resourceID.Compare(rid) == 0) return &pc;
     }
     return nullptr;
@@ -57,8 +232,8 @@ CString BuildFullPath(const Vector<PrimitiveContent> &db, const ResourceBase *rb
     CString full = "/";
     full += rbase->resourceName;
 
-    CString parentId = rbase->parentID;
-    unsigned guard = 0;
+    CString  parentId = rbase->parentID;
+    unsigned guard    = 0;
     while (parentId.GetLength() != 0 && guard++ < 32) {
         const PrimitiveContent *parentPc = FindByResourceId(db, parentId);
         if (!parentPc) break;
@@ -68,7 +243,7 @@ CString BuildFullPath(const Vector<PrimitiveContent> &db, const ResourceBase *rb
         CString newFull = "/";
         newFull += parentBase->resourceName;
         newFull += full;
-        full = newFull;
+        full     = newFull;
         parentId = parentBase->parentID;
     }
 
@@ -82,8 +257,7 @@ CString ResolveParentId(const Vector<PrimitiveContent> &db, const CString &rawTa
     if (db.GetCount() > 0) {
         if (const CSEBase *c = db[0].GetIf<CSEBase>()) {
             CString cseFull = BuildFullPath(db, c);
-            if (normTarget.Compare("m2m") == 0 ||
-                normTarget.Compare(c->resourceID) == 0 ||
+            if (normTarget.Compare("m2m") == 0 || normTarget.Compare(c->resourceID) == 0 ||
                 normTarget.Compare(c->resourceName) == 0 ||
                 NormalizePath(cseFull).Compare(normTarget) == 0) {
                 return c->resourceID;
@@ -93,7 +267,7 @@ CString ResolveParentId(const Vector<PrimitiveContent> &db, const CString &rawTa
 
     for (unsigned i = 0; i < db.GetCount(); ++i) {
         const PrimitiveContent &candidate = db[i];
-        const ResourceBase *base = GetResourceBase(candidate);
+        const ResourceBase     *base      = GetResourceBase(candidate);
         if (!base) continue;
 
         CString full = BuildFullPath(db, base);
@@ -111,7 +285,7 @@ boolean IsValidContentInfo(const CString &contentInfo)
 {
     if (contentInfo.GetLength() == 0) return true;
 
-    const char *text = contentInfo.c_str();
+    const char *text  = contentInfo.c_str();
     const char *slash = nullptr;
     const char *colon = nullptr;
     for (const char *p = text; *p != '\0'; ++p) {
@@ -150,6 +324,9 @@ void OneM2MService::Initialize(const SystemConfig &config)
 
     db_.clear();
     nextResourceId_ = 1;
+
+    // set global SPID for addressing validation
+    spId_ = config.cse.sp_id;
 
     CSEBase cse;
     cse.resourceType = ResourceType::CSEBase;
@@ -230,12 +407,23 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
 {
     ResponsePrimitive resp;
 
-    CString target = NormalizePath(request.to);
+    const CSEBase *cse         = db_.GetCount() > 0 ? db_[0].GetIf<CSEBase>() : nullptr;
+    bool           targetValid = false;
+    bool           wrongSpid   = false;
+    CString        target =
+        cse ? CanonicalizeAddressingPath(
+                  request.to, cse->resourceName, cse->cseID, spId_, targetValid, wrongSpid)
+            : CString();
+    if (!targetValid) {
+        resp.responseStatusCode =
+            wrongSpid ? ResponseStatusCode::NOT_FOUND : ResponseStatusCode::BAD_REQUEST;
+        return resp;
+    }
 
     if (request.from.GetLength() == 0) {
-        if (!request.resourceType.has_value() ||
-            request.resourceType.value() != ResourceType::AE) {
-            CLogger::Get()->Write("onem2m_service", LogNotice, "Create request missing 'from' and not creating AE");
+        if (!request.resourceType.has_value() || request.resourceType.value() != ResourceType::AE) {
+            CLogger::Get()->Write(
+                "onem2m_service", LogNotice, "Create request missing 'from' and not creating AE");
             resp.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
             return resp;
         }
@@ -266,7 +454,7 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
         id.Format("%u", nextResourceId_++);
         res.resourceID = id;
         if (res.resourceName.GetLength() == 0) res.resourceName = id;
-        res.parentID = ResolveParentId(db_, request.to);
+        res.parentID = ResolveParentId(db_, target);
     };
 
     // TODO: This is a bit clunky, but it works for now. We can later add a more elegant way of
@@ -285,14 +473,18 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
 
         if (request.vendorInformation.has_value()) {
             if (request.vendorInformation->Compare("cnt_creator_present") == 0) {
-                CLogger::Get()->Write("onem2m_service", LogNotice, "Create Container request with invalid creator");
+                CLogger::Get()->Write(
+                    "onem2m_service", LogNotice, "Create Container request with invalid creator");
                 ResponsePrimitive bad;
                 bad.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
                 return bad;
             }
             if (request.vendorInformation->Compare("cnt_creator_null") == 0) {
                 if (request.from.GetLength() == 0) {
-                    CLogger::Get()->Write("onem2m_service", LogNotice, "Create Container request with null creator and missing originator");
+                    CLogger::Get()->Write(
+                        "onem2m_service",
+                        LogNotice,
+                        "Create Container request with null creator and missing originator");
                     ResponsePrimitive bad;
                     bad.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
                     return bad;
@@ -301,14 +493,16 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
             }
         }
 
-        pc             = r;
+        pc = r;
     } else if (auto p = pc.GetIf<ContentInstance>()) {
         ContentInstance r = *p;
         assignIdAndParent(r);
         r.resourceType = ResourceType::ContentInstance;
 
         if (!IsValidContentInfo(r.contentInfo.has_value() ? *r.contentInfo : CString())) {
-            CLogger::Get()->Write("onem2m_service", LogNotice, "Create ContentInstance request with invalid contentInfo");
+            CLogger::Get()->Write("onem2m_service",
+                                  LogNotice,
+                                  "Create ContentInstance request with invalid contentInfo");
             ResponsePrimitive bad;
             bad.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
             return bad;
@@ -322,14 +516,19 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
         // Creator handling: reject explicit creator value, allow null -> set to originator
         if (request.vendorInformation.has_value()) {
             if (request.vendorInformation->Compare("cin_creator_present") == 0) {
-                CLogger::Get()->Write("onem2m_service", LogNotice, "Create ContentInstance request with invalid creator");
+                CLogger::Get()->Write("onem2m_service",
+                                      LogNotice,
+                                      "Create ContentInstance request with invalid creator");
                 ResponsePrimitive bad;
                 bad.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
                 return bad;
             }
             if (request.vendorInformation->Compare("cin_creator_null") == 0) {
                 if (request.from.GetLength() == 0) {
-                    CLogger::Get()->Write("onem2m_service", LogNotice, "Create ContentInstance request with null creator and missing originator");
+                    CLogger::Get()->Write(
+                        "onem2m_service",
+                        LogNotice,
+                        "Create ContentInstance request with null creator and missing originator");
                     ResponsePrimitive bad;
                     bad.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
                     return bad;
@@ -337,7 +536,9 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
                 r.creator = request.from;
             }
             if (request.vendorInformation->Compare("cin_has_acpi") == 0) {
-                CLogger::Get()->Write("onem2m_service", LogNotice, "Create ContentInstance request with invalid acpi");
+                CLogger::Get()->Write("onem2m_service",
+                                      LogNotice,
+                                      "Create ContentInstance request with invalid acpi");
                 ResponsePrimitive bad;
                 bad.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
                 return bad;
@@ -350,7 +551,9 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
             const PrimitiveContent *parentPc = FindByResourceId(db_, parentId);
             if (parentPc) {
                 if (parentPc->GetIf<AE>()) {
-                    CLogger::Get()->Write("onem2m_service", LogNotice, "Create ContentInstance request with AE parent");
+                    CLogger::Get()->Write("onem2m_service",
+                                          LogNotice,
+                                          "Create ContentInstance request with AE parent");
                     ResponsePrimitive bad;
                     bad.responseStatusCode = ResponseStatusCode::INVALID_CHILD_RESOURCE_TYPE;
                     return bad;
@@ -359,9 +562,7 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
         }
 
         // Ensure contentSize is set (codec may have estimated it)
-        if (r.contentSize <= 0) {
-            r.contentSize = static_cast<s64>(r.content.GetLength());
-        }
+        if (r.contentSize <= 0) { r.contentSize = static_cast<s64>(r.content.GetLength()); }
 
         // Policy checks against parent Container (mbs, mni) and potential eviction.
         if (r.parentID.GetLength() != 0) {
@@ -381,20 +582,34 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
                 if (pcnt) {
                     // Enforce max byte size per container: evict oldest CINs until new fits
                     if (pcnt->maxByteSize.has_value()) {
-                        s64 mbs = *pcnt->maxByteSize;
+                        s64 mbs          = *pcnt->maxByteSize;
                         s64 currentBytes = pcnt->currentByteSize;
-                        CLogger::Get()->Write("onem2m_service", LogNotice, "MBS check parent='%s' currentBytes=%lld newSize=%lld mbs=%lld",
-                                              pcnt->resourceID.c_str(), (long long)currentBytes, (long long)r.contentSize,
-                                              (long long)mbs);
+                        CLogger::Get()->Write(
+                            "onem2m_service",
+                            LogNotice,
+                            "MBS check parent='%s' currentBytes=%lld newSize=%lld mbs=%lld",
+                            pcnt->resourceID.c_str(),
+                            (long long)currentBytes,
+                            (long long)r.contentSize,
+                            (long long)mbs);
                         if (currentBytes + r.contentSize > mbs) {
-                            // collect existing CINs for this container (resourceID and creationTime and size)
-                            struct Cand2 { CString ri; CString ct; s64 size; };
+                            // collect existing CINs for this container (resourceID and creationTime
+                            // and size)
+                            struct Cand2 {
+                                CString ri;
+                                CString ct;
+                                s64     size;
+                            };
                             Vector<Cand2> cands;
                             for (unsigned ci = 0; ci < db_.GetCount(); ++ci) {
                                 const PrimitiveContent &child = db_[ci];
                                 if (const ContentInstance *cin = child.GetIf<ContentInstance>()) {
                                     if (cin->parentID.Compare(pcnt->resourceID) == 0) {
-                                        Cand2 cc; cc.ri = cin->resourceID; cc.ct = cin->creationTime; cc.size = cin->contentSize; cands.push_back(cc);
+                                        Cand2 cc;
+                                        cc.ri   = cin->resourceID;
+                                        cc.ct   = cin->creationTime;
+                                        cc.size = cin->contentSize;
+                                        cands.push_back(cc);
                                     }
                                 }
                             }
@@ -405,16 +620,20 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
                                 for (unsigned k = 1; k < cands.GetCount(); ++k) {
                                     if (cands[k].ct.Compare(cands[oldestPos].ct) < 0) oldestPos = k;
                                 }
-                                CString removeRi = cands[oldestPos].ri;
-                                s64 removeSize = cands[oldestPos].size;
-                                CLogger::Get()->Write("onem2m_service", LogNotice, "Evicting CIN ri='%s' size=%lld to satisfy mbs",
-                                                      removeRi.c_str(), (long long)removeSize);
+                                CString removeRi   = cands[oldestPos].ri;
+                                s64     removeSize = cands[oldestPos].size;
+                                CLogger::Get()->Write(
+                                    "onem2m_service",
+                                    LogNotice,
+                                    "Evicting CIN ri='%s' size=%lld to satisfy mbs",
+                                    removeRi.c_str(),
+                                    (long long)removeSize);
 
                                 // rebuild db_ skipping the to-be-removed CIN (by resourceID)
                                 Vector<PrimitiveContent> newdb;
                                 for (unsigned x = 0; x < db_.GetCount(); ++x) {
-                                    const PrimitiveContent &pcx = db_[x];
-                                    const ContentInstance *cinx = pcx.GetIf<ContentInstance>();
+                                    const PrimitiveContent &pcx  = db_[x];
+                                    const ContentInstance  *cinx = pcx.GetIf<ContentInstance>();
                                     if (cinx && cinx->resourceID.Compare(removeRi) == 0) continue;
                                     newdb.push_back(db_[x]);
                                 }
@@ -444,11 +663,12 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
                             if (updatedParentIdx >= 0) {
                                 Container updated = *db_[updatedParentIdx].GetIf<Container>();
                                 // recompute counters
-                                s64 sum = 0;
+                                s64 sum   = 0;
                                 s64 count = 0;
                                 for (unsigned ci = 0; ci < db_.GetCount(); ++ci) {
                                     const PrimitiveContent &child = db_[ci];
-                                    if (const ContentInstance *cin = child.GetIf<ContentInstance>()) {
+                                    if (const ContentInstance *cin =
+                                            child.GetIf<ContentInstance>()) {
                                         if (cin->parentID.Compare(updated.resourceID) == 0) {
                                             sum += cin->contentSize;
                                             ++count;
@@ -456,13 +676,17 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
                                     }
                                 }
                                 updated.currentNrOfInstances = count;
-                                updated.currentByteSize = sum;
-                                db_[updatedParentIdx] = updated;
-                                pcnt = db_[updatedParentIdx].GetIf<Container>();
+                                updated.currentByteSize      = sum;
+                                db_[updatedParentIdx]        = updated;
+                                pcnt         = db_[updatedParentIdx].GetIf<Container>();
                                 currentBytes = sum; // update local cumulative size after eviction
-                                CLogger::Get()->Write("onem2m_service", LogNotice, "After eviction parent='%s' cni=%lld cbs=%lld",
-                                                      updated.resourceID.c_str(), (long long)updated.currentNrOfInstances,
-                                                      (long long)updated.currentByteSize);
+                                CLogger::Get()->Write(
+                                    "onem2m_service",
+                                    LogNotice,
+                                    "After eviction parent='%s' cni=%lld cbs=%lld",
+                                    updated.resourceID.c_str(),
+                                    (long long)updated.currentNrOfInstances,
+                                    (long long)updated.currentByteSize);
                             }
 
                             if (currentBytes + r.contentSize > mbs) {
@@ -479,18 +703,28 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
                         s64 current = pcnt->currentNrOfInstances;
                         if (current + 1 > desired) {
                             // collect existing CINs for this container
-                            struct Cand { unsigned idx; CString ct; s64 size; };
+                            struct Cand {
+                                unsigned idx;
+                                CString  ct;
+                                s64      size;
+                            };
                             Vector<Cand> cands;
                             for (unsigned ci = 0; ci < db_.GetCount(); ++ci) {
                                 const PrimitiveContent &child = db_[ci];
                                 if (const ContentInstance *cin = child.GetIf<ContentInstance>()) {
                                     if (cin->parentID.Compare(pcnt->resourceID) == 0) {
-                                        Cand cc; cc.idx = ci; cc.ct = cin->creationTime; cc.size = cin->contentSize; cands.push_back(cc);
+                                        Cand cc;
+                                        cc.idx  = ci;
+                                        cc.ct   = cin->creationTime;
+                                        cc.size = cin->contentSize;
+                                        cands.push_back(cc);
                                     }
                                 }
                             }
-                            // sort candidates by creationTime asc (oldest first) - simple selection removal
-                            while (pcnt->currentNrOfInstances + 1 > desired && cands.GetCount() > 0) {
+                            // sort candidates by creationTime asc (oldest first) - simple selection
+                            // removal
+                            while (pcnt->currentNrOfInstances + 1 > desired &&
+                                   cands.GetCount() > 0) {
                                 // find oldest index in cands
                                 unsigned oldestPos = 0;
                                 for (unsigned k = 1; k < cands.GetCount(); ++k) {
@@ -507,14 +741,19 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
                                 db_ = newdb;
 
                                 // adjust container counters (find parent again)
-                                // (we will search and update below after loop; recreate candidate list)
-                                // rebuild candidate list for next iteration
+                                // (we will search and update below after loop; recreate candidate
+                                // list) rebuild candidate list for next iteration
                                 cands.clear();
                                 for (unsigned ci = 0; ci < db_.GetCount(); ++ci) {
                                     const PrimitiveContent &child = db_[ci];
-                                    if (const ContentInstance *cin = child.GetIf<ContentInstance>()) {
+                                    if (const ContentInstance *cin =
+                                            child.GetIf<ContentInstance>()) {
                                         if (cin->parentID.Compare(pcnt->resourceID) == 0) {
-                                            Cand cc; cc.idx = ci; cc.ct = cin->creationTime; cc.size = cin->contentSize; cands.push_back(cc);
+                                            Cand cc;
+                                            cc.idx  = ci;
+                                            cc.ct   = cin->creationTime;
+                                            cc.size = cin->contentSize;
+                                            cands.push_back(cc);
                                         }
                                     }
                                 }
@@ -532,18 +771,21 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
                                 if (parentIdx >= 0) {
                                     // decrement counters based on the removed CIN
                                     Container updated = *db_[parentIdx].GetIf<Container>();
-                                    updated.currentNrOfInstances = static_cast<s64>(cands.GetCount());
+                                    updated.currentNrOfInstances =
+                                        static_cast<s64>(cands.GetCount());
                                     // recompute currentByteSize
                                     s64 sum = 0;
                                     for (unsigned ci = 0; ci < db_.GetCount(); ++ci) {
                                         const PrimitiveContent &child = db_[ci];
-                                        if (const ContentInstance *cin = child.GetIf<ContentInstance>()) {
-                                            if (cin->parentID.Compare(updated.resourceID) == 0) sum += cin->contentSize;
+                                        if (const ContentInstance *cin =
+                                                child.GetIf<ContentInstance>()) {
+                                            if (cin->parentID.Compare(updated.resourceID) == 0)
+                                                sum += cin->contentSize;
                                         }
                                     }
                                     updated.currentByteSize = sum;
-                                    db_[parentIdx] = updated;
-                                    pcnt = db_[parentIdx].GetIf<Container>();
+                                    db_[parentIdx]          = updated;
+                                    pcnt                    = db_[parentIdx].GetIf<Container>();
                                 } else {
                                     break;
                                 }
@@ -554,7 +796,7 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
             }
         }
 
-        pc             = r;
+        pc = r;
     } else if (auto p = pc.GetIf<AE>()) {
         AE r = *p;
         assignIdAndParent(r);
@@ -637,7 +879,7 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
         }
 
         // Validate API prefix: allow 'N' and 'R', and lower-case 'r' only for RVI < 4
-        char first = r.appID.c_str()[0];
+        char first  = r.appID.c_str()[0];
         bool api_ok = false;
         if (first == 'N' || first == 'R') api_ok = true;
         else if (first == 'r' && !(request.releaseVersionIndicator.has_value() &&
@@ -656,8 +898,7 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
                 if (request.from.GetLength() != 0 && ea->aeID.GetLength() &&
                     request.from.Compare(ea->aeID) == 0) {
                     ResponsePrimitive resp;
-                    resp.responseStatusCode =
-                        ResponseStatusCode::ORIGINATOR_HAS_ALREADY_REGISTERED;
+                    resp.responseStatusCode = ResponseStatusCode::ORIGINATOR_HAS_ALREADY_REGISTERED;
                     return resp;
                 }
                 // Parent/Name clash
@@ -742,7 +983,9 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
 
     // Validate parent/child rules: AE may only be created under the CSE root
     if (pc.GetIf<AE>()) {
-        const boolean isCseTarget = target.Compare("m2m") == 0;
+        CString cseRoot = "/";
+        cseRoot += cse->resourceName;
+        const boolean isCseTarget = target.Compare(cseRoot) == 0;
         if (!isCseTarget) {
             // Parent is not the CSE root: find parent resource and ensure it's not an AE
             for (unsigned i = 0; i < db_.GetCount(); ++i) {
@@ -856,7 +1099,22 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
 
     ResponsePrimitive resp;
 
-    const boolean isCseTarget = request.to.Compare("/m2m") == 0 || request.to.Compare("m2m") == 0;
+    const CSEBase *cse         = db_.GetCount() > 0 ? db_[0].GetIf<CSEBase>() : nullptr;
+    bool           targetValid = false;
+    bool           wrongSpid   = false;
+    CString        target =
+        cse ? CanonicalizeAddressingPath(
+                  request.to, cse->resourceName, cse->cseID, spId_, targetValid, wrongSpid)
+            : CString();
+    if (!targetValid) {
+        resp.responseStatusCode =
+            wrongSpid ? ResponseStatusCode::NOT_FOUND : ResponseStatusCode::BAD_REQUEST;
+        return resp;
+    }
+
+    CString cseRoot = "/";
+    cseRoot += cse->resourceName;
+    const boolean isCseTarget = target.Compare(cseRoot) == 0;
     if (isCseTarget && request.from.Compare("CAdmin") != 0) {
         resp.responseStatusCode = ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
         return resp;
@@ -868,22 +1126,19 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
     auto isAllowedForContainer = [&](const Container &cnt) -> bool {
         if (request.from.Compare("CAdmin") == 0) return true;
 
-        CString current = cnt.parentID;
-        unsigned guard = 0;
+        CString  current = cnt.parentID;
+        unsigned guard   = 0;
         while (current.GetLength() != 0 && guard++ < 32) {
             const PrimitiveContent *pc = FindByResourceId(db_, current);
             if (!pc) break;
 
-            if (const AE *ae = pc->GetIf<AE>()) {
-                return request.from.Compare(ae->aeID) == 0;
-            }
+            if (const AE *ae = pc->GetIf<AE>()) { return request.from.Compare(ae->aeID) == 0; }
             if (const Container *parentCnt = pc->GetIf<Container>()) {
                 current = parentCnt->parentID;
                 continue;
             }
             if (const CSEBase *cse = pc->GetIf<CSEBase>()) {
-                return request.from.Compare("CAdmin") == 0 ||
-                       request.from.Compare(cse->cseID) == 0;
+                return request.from.Compare("CAdmin") == 0 || request.from.Compare(cse->cseID) == 0;
             }
             break;
         }
@@ -900,58 +1155,56 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
         auto matchAndReturn = [&](const auto *r) -> bool {
             if (!r) return false;
 
-            CString target = NormalizePath(request.to);
-
             CString full = BuildFullPath(db_, r);
             CString name = r->resourceName;
             CString rid  = r->resourceID;
 
             // Handle container latest/oldest shortcuts: /<cnt>/la and /<cnt>/ol
             if (const Container *cnt = pc.GetIf<Container>()) {
-                CString laPath = NormalizePath(full);
+                CString laPath = full;
                 laPath += "/la";
-                CString olPath = NormalizePath(full);
+                CString olPath = full;
                 olPath += "/ol";
                 if (laPath.Compare(target) == 0 || olPath.Compare(target) == 0) {
                     // authorization
                     if (!isAllowedForContainer(*cnt)) {
                         ResponsePrimitive deny;
                         deny.responseStatusCode = ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
-                        resp = deny;
+                        resp                    = deny;
                         return true;
                     }
-                        // If this is a discovery request (rcn=ChildResourceReferences), return rrl
-                        if (request.resultContent.has_value() &&
-                            request.resultContent.value() == ResultContent::ChildResourceReferences) {
-                            Vector<ChildResourceRef> rrl;
-                            // If disr is set, discovery returns empty list
-                            if (!(cnt->disableRetrieval.has_value() && *cnt->disableRetrieval)) {
-                                for (unsigned ci = 0; ci < db_.GetCount(); ++ci) {
-                                    const PrimitiveContent &child = db_[ci];
-                                    if (const ContentInstance *cin = child.GetIf<ContentInstance>()) {
-                                        if (cin->parentID.Compare(cnt->resourceID) == 0) {
-                                            ChildResourceRef cref;
-                                            cref.name = cin->resourceName;
-                                            cref.type = ResourceType::ContentInstance;
-                                            // value: CSE-relative URI -> build full path
-                                            cref.value = BuildFullPath(db_, cin);
-                                            rrl.push_back(cref);
-                                        }
+                    // If this is a discovery request (rcn=ChildResourceReferences), return rrl
+                    if (request.resultContent.has_value() &&
+                        request.resultContent.value() == ResultContent::ChildResourceReferences) {
+                        Vector<ChildResourceRef> rrl;
+                        // If disr is set, discovery returns empty list
+                        if (!(cnt->disableRetrieval.has_value() && *cnt->disableRetrieval)) {
+                            for (unsigned ci = 0; ci < db_.GetCount(); ++ci) {
+                                const PrimitiveContent &child = db_[ci];
+                                if (const ContentInstance *cin = child.GetIf<ContentInstance>()) {
+                                    if (cin->parentID.Compare(cnt->resourceID) == 0) {
+                                        ChildResourceRef cref;
+                                        cref.name = cin->resourceName;
+                                        cref.type = ResourceType::ContentInstance;
+                                        // value: CSE-relative URI -> build full path
+                                        cref.value = BuildFullPath(db_, cin);
+                                        rrl.push_back(cref);
                                     }
                                 }
                             }
-                            PrimitiveContent out;
-                            out = rrl;
-                            resp = makeResponse(request, ResponseStatusCode::OK, out);
-                            return true;
                         }
-                        // disr enforcement for LA/OL
-                        if (cnt->disableRetrieval.has_value() && *cnt->disableRetrieval) {
-                            ResponsePrimitive deny;
-                            deny.responseStatusCode = ResponseStatusCode::OPERATION_NOT_ALLOWED;
-                            resp = deny;
-                            return true;
-                        }
+                        PrimitiveContent out;
+                        out  = rrl;
+                        resp = makeResponse(request, ResponseStatusCode::OK, out);
+                        return true;
+                    }
+                    // disr enforcement for LA/OL
+                    if (cnt->disableRetrieval.has_value() && *cnt->disableRetrieval) {
+                        ResponsePrimitive deny;
+                        deny.responseStatusCode = ResponseStatusCode::OPERATION_NOT_ALLOWED;
+                        resp                    = deny;
+                        return true;
+                    }
 
                     // find matching CINs under this container
                     int bestIdx = -1;
@@ -972,18 +1225,20 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
                             }
                         }
                     }
-                        if (bestIdx < 0) {
+                    if (bestIdx < 0) {
                         resp.responseStatusCode = ResponseStatusCode::NOT_FOUND;
                         return true;
                     }
                     PrimitiveContent out;
-                        out = db_[bestIdx];
+                    out  = db_[bestIdx];
                     resp = makeResponse(request, ResponseStatusCode::OK, out);
                     return true;
                 }
             }
-            if (NormalizePath(full).Compare(target) == 0 || rid.Compare(target) == 0 ||
-                name.Compare(target) == 0) {
+            if (full.Compare(target) == 0 ||
+                NormalizePath(full).Compare(NormalizePath(target)) == 0 ||
+                rid.Compare(NormalizePath(target)) == 0 ||
+                name.Compare(NormalizePath(target)) == 0) {
                 CLogger::Get()->Write("onem2m_service", LogNotice, "MATCH FOUND: %s", full.c_str());
                 // If this is a container and a discovery request (rcn=ChildResourceReferences),
                 // return the child resource references (possibly empty when disr is set).
@@ -997,18 +1252,23 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
                                 if (const ContentInstance *cin = child.GetIf<ContentInstance>()) {
                                     if (cin->parentID.Compare(cnt->resourceID) == 0) {
                                         ChildResourceRef cref;
-                                        cref.name = cin->resourceName;
-                                        cref.type = ResourceType::ContentInstance;
+                                        cref.name  = cin->resourceName;
+                                        cref.type  = ResourceType::ContentInstance;
                                         cref.value = BuildFullPath(db_, cin);
                                         rrl.push_back(cref);
                                     }
                                 }
                             }
                         }
-                        CLogger::Get()->Write("onem2m_service", LogNotice, "Discovery rcn=6 for parent='%s' disr=%d rrl_count=%u",
-                                              cnt->resourceID.c_str(), (int)(cnt->disableRetrieval.has_value() && *cnt->disableRetrieval), (unsigned)rrl.GetCount());
+                        CLogger::Get()->Write(
+                            "onem2m_service",
+                            LogNotice,
+                            "Discovery rcn=6 for parent='%s' disr=%d rrl_count=%u",
+                            cnt->resourceID.c_str(),
+                            (int)(cnt->disableRetrieval.has_value() && *cnt->disableRetrieval),
+                            (unsigned)rrl.GetCount());
                         PrimitiveContent out;
-                        out = rrl;
+                        out  = rrl;
                         resp = makeResponse(request, ResponseStatusCode::OK, out);
                         return true;
                     }
@@ -1019,18 +1279,16 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
                     if (request.from.GetLength() == 0 || ae->aeID.GetLength() == 0 ||
                         request.from.Compare(ae->aeID) != 0) {
                         ResponsePrimitive deny;
-                        deny.responseStatusCode =
-                            ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
-                        resp = deny;
+                        deny.responseStatusCode = ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
+                        resp                    = deny;
                         return true;
                     }
                 }
                 if (auto cnt = pc.GetIf<Container>()) {
                     if (!isAllowedForContainer(*cnt)) {
                         ResponsePrimitive deny;
-                        deny.responseStatusCode =
-                            ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
-                        resp = deny;
+                        deny.responseStatusCode = ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
+                        resp                    = deny;
                         return true;
                     }
                 }
@@ -1042,7 +1300,8 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
                             if (const Container *pcnt = parentPc->GetIf<Container>()) {
                                 if (pcnt->disableRetrieval.has_value() && *pcnt->disableRetrieval) {
                                     ResponsePrimitive deny;
-                                    deny.responseStatusCode = ResponseStatusCode::OPERATION_NOT_ALLOWED;
+                                    deny.responseStatusCode =
+                                        ResponseStatusCode::OPERATION_NOT_ALLOWED;
                                     resp = deny;
                                     return true;
                                 }
@@ -1079,11 +1338,15 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
     CLogger::Get()->Write("onem2m_service", LogWarning, "RETRIEVE failed: resource not found");
 
     // Fallback: try parent/child resolution for requests like /<cnt>/rn
-    CString normTarget = NormalizePath(request.to);
-    const char *nt = normTarget.c_str();
-    int len = (int)normTarget.GetLength();
-    int lastSlash = -1;
-    for (int j = len - 1; j >= 0; --j) if (nt[j] == '/') { lastSlash = j; break; }
+    CString     normTarget = target;
+    const char *nt         = normTarget.c_str();
+    int         len        = (int)normTarget.GetLength();
+    int         lastSlash  = -1;
+    for (int j = len - 1; j >= 0; --j)
+        if (nt[j] == '/') {
+            lastSlash = j;
+            break;
+        }
     if (lastSlash >= 0) {
         // split into parentPath / childName
         char *tmp = new char[len + 1];
@@ -1093,18 +1356,24 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
         CString childName(tmp + lastSlash + 1);
         delete[] tmp;
 
-        CLogger::Get()->Write("onem2m_service", LogDebug, "Fallback lookup parent='%s' child='%s'", parentPath.c_str(), childName.c_str());
+        CLogger::Get()->Write("onem2m_service",
+                              LogDebug,
+                              "Fallback lookup parent='%s' child='%s'",
+                              parentPath.c_str(),
+                              childName.c_str());
 
         // find parent container
-        CString foundParentId;
+        CString          foundParentId;
         const Container *foundCnt = nullptr;
         for (unsigned pi = 0; pi < db_.GetCount(); ++pi) {
             const PrimitiveContent &cand = db_[pi];
             if (const Container *pcnt = cand.GetIf<Container>()) {
                 CString full = BuildFullPath(db_, pcnt);
-                if (NormalizePath(full).Compare(parentPath) == 0 || pcnt->resourceID.Compare(parentPath) == 0 || pcnt->resourceName.Compare(parentPath) == 0) {
+                if (NormalizePath(full).Compare(parentPath) == 0 ||
+                    pcnt->resourceID.Compare(parentPath) == 0 ||
+                    pcnt->resourceName.Compare(parentPath) == 0) {
                     foundParentId = pcnt->resourceID;
-                    foundCnt = pcnt;
+                    foundCnt      = pcnt;
                     break;
                 }
             }
@@ -1115,20 +1384,24 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
             for (unsigned ci = 0; ci < db_.GetCount(); ++ci) {
                 const PrimitiveContent &child = db_[ci];
                 if (const ContentInstance *cin = child.GetIf<ContentInstance>()) {
-                    if (cin->parentID.Compare(foundParentId) == 0 && (cin->resourceName.Compare(childName) == 0 || cin->resourceID.Compare(childName) == 0)) {
+                    if (cin->parentID.Compare(foundParentId) == 0 &&
+                        (cin->resourceName.Compare(childName) == 0 ||
+                         cin->resourceID.Compare(childName) == 0)) {
                         // enforce disr and authorization
-                        if (foundCnt && foundCnt->disableRetrieval.has_value() && *foundCnt->disableRetrieval) {
+                        if (foundCnt && foundCnt->disableRetrieval.has_value() &&
+                            *foundCnt->disableRetrieval) {
                             ResponsePrimitive deny;
                             deny.responseStatusCode = ResponseStatusCode::OPERATION_NOT_ALLOWED;
                             return deny;
                         }
                         if (foundCnt && !isAllowedForContainer(*foundCnt)) {
                             ResponsePrimitive deny;
-                            deny.responseStatusCode = ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
+                            deny.responseStatusCode =
+                                ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
                             return deny;
                         }
                         PrimitiveContent out = db_[ci];
-                        resp = makeResponse(request, ResponseStatusCode::OK, out);
+                        resp                 = makeResponse(request, ResponseStatusCode::OK, out);
                         return resp;
                     }
                 }
@@ -1144,7 +1417,22 @@ ResponsePrimitive OneM2MService::Update(const RequestPrimitive &request)
 {
     ResponsePrimitive resp;
 
-    if (request.to.Compare("/m2m") == 0 || request.to.Compare("m2m") == 0) {
+    const CSEBase *cse         = db_.GetCount() > 0 ? db_[0].GetIf<CSEBase>() : nullptr;
+    bool           targetValid = false;
+    bool           wrongSpid   = false;
+    CString        target =
+        cse ? CanonicalizeAddressingPath(
+                  request.to, cse->resourceName, cse->cseID, spId_, targetValid, wrongSpid)
+            : CString();
+    if (!targetValid) {
+        resp.responseStatusCode =
+            wrongSpid ? ResponseStatusCode::NOT_FOUND : ResponseStatusCode::BAD_REQUEST;
+        return resp;
+    }
+
+    CString cseRoot = "/";
+    cseRoot += cse->resourceName;
+    if (target.Compare(cseRoot) == 0) {
         resp.responseStatusCode = ResponseStatusCode::OPERATION_NOT_ALLOWED;
         return resp;
     }
@@ -1158,7 +1446,22 @@ ResponsePrimitive OneM2MService::Delete(const RequestPrimitive &request)
 {
     ResponsePrimitive resp;
 
-    if (request.to.Compare("/m2m") == 0 || request.to.Compare("m2m") == 0) {
+    const CSEBase *cse         = db_.GetCount() > 0 ? db_[0].GetIf<CSEBase>() : nullptr;
+    bool           targetValid = false;
+    bool           wrongSpid   = false;
+    CString        target =
+        cse ? CanonicalizeAddressingPath(
+                  request.to, cse->resourceName, cse->cseID, spId_, targetValid, wrongSpid)
+            : CString();
+    if (!targetValid) {
+        resp.responseStatusCode =
+            wrongSpid ? ResponseStatusCode::NOT_FOUND : ResponseStatusCode::BAD_REQUEST;
+        return resp;
+    }
+
+    CString cseRoot = "/";
+    cseRoot += cse->resourceName;
+    if (target.Compare(cseRoot) == 0) {
         resp.responseStatusCode = ResponseStatusCode::OPERATION_NOT_ALLOWED;
         return resp;
     }

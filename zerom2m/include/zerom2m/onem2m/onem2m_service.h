@@ -50,6 +50,7 @@ private:
     ~OneM2MService() = default;
 
     boolean initialized_ = false;
+    CString spId_;
 
     // TODO: Add proper way of storing data.
     // Simple in-memory DB abstraction. Stores PrimitiveContent objects representing created

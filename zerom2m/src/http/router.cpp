@@ -57,10 +57,18 @@ static bool PathMatches(const CString &prefix, bool wildcard, const StringView &
 
 HttpResponse Router::HandleRequest(const HttpRequest &request)
 {
-    // exact match takes precedence over wildcard; iterate in registration order
+    // exact matches must win over wildcard prefixes.
     for (unsigned i = 0; i < routeCount_; ++i) {
         Route &r = routes_[i];
-        if (r.method != request.Method) continue;
+        if (r.method != request.Method || r.wildcard) continue;
+        if (PathMatches(r.prefix, r.wildcard, request.Path)) {
+            if (r.handler) return r.handler->HandleRequest(request);
+        }
+    }
+
+    for (unsigned i = 0; i < routeCount_; ++i) {
+        Route &r = routes_[i];
+        if (r.method != request.Method || !r.wildcard) continue;
         if (PathMatches(r.prefix, r.wildcard, request.Path)) {
             if (r.handler) return r.handler->HandleRequest(request);
         }

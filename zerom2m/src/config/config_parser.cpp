@@ -127,6 +127,7 @@ void ConfigParser::ParseLine(const char *section, char *line)
         if (strcmp(key, "resource_name") == 0) config_.cse.resource_name = value;
         else if (strcmp(key, "resource_id") == 0) config_.cse.resource_id = value;
         else if (strcmp(key, "cse_id") == 0) config_.cse.cse_id = value;
+        else if (strcmp(key, "sp_id") == 0) config_.cse.sp_id = value;
         else logger_.Write(FromConfigParser, LogWarning, "Unknown cse config key: '%s'", key);
     }
     // [system]
@@ -227,6 +228,14 @@ void ConfigParser::DumpConfig()
     logger_.Write(FromConfigParser, LogDebug, "http.max_clients = %u", config_.http.max_clients);
     logger_.Write(
         FromConfigParser, LogDebug, "system.hostname = %s", (const char *)config_.system.hostname);
+    logger_.Write(FromConfigParser,
+                  LogDebug,
+                  "cse.resource_name = %s",
+                  (const char *)config_.cse.resource_name);
+    logger_.Write(
+        FromConfigParser, LogDebug, "cse.resource_id = %s", (const char *)config_.cse.resource_id);
+    logger_.Write(FromConfigParser, LogDebug, "cse.cse_id = %s", (const char *)config_.cse.cse_id);
+    logger_.Write(FromConfigParser, LogDebug, "cse.sp_id = %s", (const char *)config_.cse.sp_id);
 }
 
 bool ConfigParser::ParseIPv4(const char *value, u8 out[4])
@@ -257,4 +266,4 @@ bool ConfigParser::ParseIPv4(const char *value, u8 out[4])
     return true;
 }
 
-} // namespace zerom2m
+} // namespace zerom2m::config
