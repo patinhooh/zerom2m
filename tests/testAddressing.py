@@ -50,7 +50,6 @@ class TestAddressing(unittest.TestCase):
 		if not isTearDownEnabled():
 			return
 		testCaseStart('TearDown TestAddressing')
-		DELETE(aeURL, ORIGINATOR)	# Just delete the AE and everything below it. Ignore whether it exists or not
 		testCaseEnd('TearDown TestAddressing')
 
 
