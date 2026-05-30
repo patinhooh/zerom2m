@@ -72,6 +72,9 @@ zerom2m: circle
 check-zerom2m:
 	$(MAKE) -C $(ZEROM2M_DIR) check $(MAKEFLAGS)
 
+test-zerom2m:
+	$(MAKE) -C $(ZEROM2M_DIR) test $(MAKEFLAGS)
+
 # Cleaning
 clean: clean-circle clean-zerom2m
 

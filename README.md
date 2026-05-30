@@ -114,7 +114,7 @@ This project includes test files from the ACME oneM2M CSE project:
 
 - ACME oneM2M CSE: <https://github.com/ankraft/ACME-oneM2M-CSE>  
   License: BSD 3-Clause License  
-  See [LICENSE](./tests/LICENSE) for the full license text.
+  See [LICENSE](./third_party/acme/LICENSE) for the full license text.
 
 ## License
 

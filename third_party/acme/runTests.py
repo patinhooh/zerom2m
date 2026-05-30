@@ -21,9 +21,9 @@ from rich.console import Console
 from rich.table import Table
 from rich.style import Style
 from rich.progress import track
-import init
+import init as init
 from acmecse.etc.Constants import Constants as C
-import reporter
+import reporter as reporter
 from datetime import datetime, timezone
 import unittest as _unittest
 import traceback as _traceback
@@ -352,11 +352,13 @@ if __name__ == '__main__':
 	console.print(table)
 	# Emit reporter outputs (JSON + HTML)
 	ts = datetime.now(tz=timezone.utc).isoformat().replace(':', '-')
-	json_path = f'../results/run_{ts}.json'
+	json_path = f'../../results/run_{ts}.json'
 	html_path = json_path.replace('.json', '.html')
 	cse_info = { 'url': init.CSEURL, 'rvi': getattr(init, 'RELEASEVERSION', '') }
 
 	reporter.write_json(json_path, extra_meta={"runner": "runTests.py"})
 	reporter.write_html(html_path, cse_info=cse_info)
+
+	console.print(f'[bright_blue]Detailed report written to:[/bright_blue]\n\t[white]{"zerom2m" + json_path[5:]}\n\t{"zerom2m" + html_path[5:]}[/white]')
 
 	init.shutdown()
