@@ -1,5 +1,5 @@
 /*
- * libc_stub.c
+ * libc_stub.cpp
  *
  * ZeroM2M
  * Copyright (C) 2026 ZeroM2M Authors

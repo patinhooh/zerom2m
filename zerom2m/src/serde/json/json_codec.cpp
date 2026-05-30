@@ -168,8 +168,24 @@ JsonValue *JsonCodec::SerializeContentInstance(const ContentInstance &r) const
         obj->AddMember(attr::CONTENT_INFO, new JsonValue(*r.contentInfo));
     obj->AddMember(attr::CONTENT_SIZE, new JsonValue(static_cast<double>(r.contentSize)));
     if (r.content.GetLength() > 0) {
-        if (JsonValue *parsed = JsonDocument::Parse(r.content.c_str())) {
-            obj->AddMember(attr::CONTENT, parsed);
+        // Avoid treating unquoted alpha strings as JSON primitives (which
+        // would be parsed to number 0). Only attempt to parse the content
+        // as JSON when the first non-space character indicates a JSON value
+        // (object, array, quoted string, digit, minus or literal starts).
+        const char *p = r.content.c_str();
+        while (*p && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) ++p;
+        bool tryParse = false;
+        if (*p) {
+            if (*p == '{' || *p == '[' || *p == '"' || *p == '-' || (*p >= '0' && *p <= '9')) tryParse = true;
+            else if (strncmp(p, "true", 4) == 0 || strncmp(p, "false", 5) == 0 || strncmp(p, "null", 4) == 0)
+                tryParse = true;
+        }
+        if (tryParse) {
+            if (JsonValue *parsed = JsonDocument::Parse(r.content.c_str())) {
+                obj->AddMember(attr::CONTENT, parsed);
+            } else {
+                obj->AddMember(attr::CONTENT, new JsonValue(r.content));
+            }
         } else {
             obj->AddMember(attr::CONTENT, new JsonValue(r.content));
         }
@@ -606,9 +622,14 @@ JsonValue *JsonCodec::SerializePrimitiveContentValue(const PrimitiveContent &inp
             refObj->AddMember(dt::VALUE, new JsonValue(ref.value));
             arr->AppendElement(refObj);
         }
-        JsonValue *root = new JsonValue(JSON_OBJECT);
-        root->AddMember(dt::CHILD_RESOURCE, arr);
-        return root;
+        // Tests expect discovery results to be wrapped as `m2m:rrl` with an
+        // inner `rrf` array. Build that structure here so consumers see
+        // `m2m:rrl/rrf` as expected.
+        JsonValue *rrfObj = new JsonValue(JSON_OBJECT);
+        rrfObj->AddMember("rrf", arr);
+        JsonValue *wrapper = new JsonValue(JSON_OBJECT);
+        wrapper->AddMember("m2m:rrl", rrfObj);
+        return wrapper;
     }
     return nullptr;
 }
@@ -715,10 +736,20 @@ boolean JsonCodec::DeserializeContentInstance(const JsonValue &root, RequestPrim
         out.vendorInformation = CString("cin_has_acpi");
     }
     GetOptString(*cin, attr::CONTENT_INFO, r.contentInfo);
-    // Preserve the JSON text for con so it can round-trip as string, number, boolean, array or
-    // object.
+    // Preserve the content for `con`. If the content is a JSON string, store the
+    // raw string value (no surrounding quotes) so contentSize matches the
+    // actual payload size expected by tests/spec. For non-string values keep the
+    // serialized JSON so objects/arrays/numbers round-trip correctly.
     const JsonValue *conV = cin->GetMember(attr::CONTENT);
-    if (conV) { r.content = conV->Serialize(); }
+    if (conV) {
+        if (conV->GetType() == JSON_STRING) {
+            const CString *s = conV->GetString();
+            if (s) r.content = *s;
+            else r.content = CString();
+        } else {
+            r.content = conV->Serialize();
+        }
+    }
     const JsonValue *csV = cin->GetMember(attr::CONTENT_SIZE);
     if (csV) {
         auto n = csV->GetNumber();

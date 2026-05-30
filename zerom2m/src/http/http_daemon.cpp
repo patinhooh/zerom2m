@@ -276,7 +276,73 @@ void HttpDaemon::Worker(void)
 
     HttpResponse response;
     if (handler_) {
+        // Parse query string into QueryParams so handlers can read rcn, rp, etc.
+        QueryParam *ownedParams = nullptr;
+        size_t paramCount = 0;
+        if (request.Query.Data && request.Query.Length > 0) {
+            // Count parameters (split on '&')
+            const char *q = request.Query.Data;
+            // make writable within pBuf - ParseRequestLine ensured null-termination
+            // Count params
+            paramCount = 1;
+            for (const char *c = q; *c; ++c) if (*c == '&') ++paramCount;
+            ownedParams = new QueryParam[paramCount];
+
+            size_t idx = 0;
+            char *p = const_cast<char *>(q);
+            while (p && *p && idx < paramCount) {
+                char *name = p;
+                char *eq = strchr(p, '=');
+                char *amp = strchr(p, '&');
+                if (eq == nullptr) {
+                    // name only
+                    if (amp) {
+                        *amp = '\0';
+                        ownedParams[idx].Name.Data = name;
+                        ownedParams[idx].Name.Length = strlen(name);
+                        ownedParams[idx].Value.Data = nullptr;
+                        ownedParams[idx].Value.Length = 0;
+                        p = amp + 1;
+                    } else {
+                        ownedParams[idx].Name.Data = name;
+                        ownedParams[idx].Name.Length = strlen(name);
+                        ownedParams[idx].Value.Data = nullptr;
+                        ownedParams[idx].Value.Length = 0;
+                        p = nullptr;
+                    }
+                } else {
+                    // name=value
+                    *eq = '\0';
+                    char *val = eq + 1;
+                    if (amp) {
+                        *amp = '\0';
+                        ownedParams[idx].Name.Data = name;
+                        ownedParams[idx].Name.Length = strlen(name);
+                        ownedParams[idx].Value.Data = val;
+                        ownedParams[idx].Value.Length = strlen(val);
+                        p = amp + 1;
+                    } else {
+                        ownedParams[idx].Name.Data = name;
+                        ownedParams[idx].Name.Length = strlen(name);
+                        ownedParams[idx].Value.Data = val;
+                        ownedParams[idx].Value.Length = strlen(val);
+                        p = nullptr;
+                    }
+                }
+                ++idx;
+            }
+            // attach to request for handler to use
+            request.QueryParams = ownedParams;
+            request.QueryParamCount = paramCount;
+        }
+
         response = handler_->HandleRequest(request);
+
+        if (ownedParams) {
+            delete[] ownedParams;
+            request.QueryParams = nullptr;
+            request.QueryParamCount = 0;
+        }
     } else {
         response.Status     = ResponseStatus::InternalServerError;
         response.Body       = nullptr;
