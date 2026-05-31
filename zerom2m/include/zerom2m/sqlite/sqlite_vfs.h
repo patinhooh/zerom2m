@@ -1,5 +1,5 @@
 /*
- * paths.h
+ * sqlite_vfs.h
  *
  * ZeroM2M
  * Copyright (C) 2026 ZeroM2M Authors
@@ -9,8 +9,4 @@
  */
 #pragma once
 
-#define DRIVE "SD:"
-#define WLAN_PATH DRIVE "/wlan/"
-#define WPA_PATH DRIVE "/wpa_supplicant.conf"
-#define CONFIG_PATH DRIVE "/system.cfg"
-#define DB_PATH DRIVE "/zerom2m.db"
+bool RegisterCircleVfs();

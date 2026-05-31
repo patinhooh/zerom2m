@@ -13,6 +13,7 @@
 #include <zerom2m/onem2m/types/primitives.h>
 #include <zerom2m/config/system_config.h>
 #include <zerom2m/onem2m/types/resources.h>
+#include <zerom2m/sqlite/database.h>
 
 #include <circle/types.h>
 
@@ -51,13 +52,9 @@ private:
 
     boolean initialized_ = false;
 
-    // TODO: Add proper way of storing data.
-    // Simple in-memory DB abstraction. Stores PrimitiveContent objects representing created
-    // resources. This will later be replaced with a real database backend.
-    // FIXME: We changed this to singleton so it could cause problems with concurrent access. Not
-    // the end of the world as task are cooperative, and single threaded.
-    Vector<PrimitiveContent> db_;
-    u32                      nextResourceId_ = 1;
+
+    zerom2m::sqlite::Database db_;
+    u64                      nextResourceId_ = 1;
 };
 
 } // namespace zerom2m::onem2m
