@@ -4,6 +4,8 @@
 #	(c) 2020 by Andreas Kraft
 #	License: BSD 3-Clause License. See the LICENSE file for further details.
 #
+#	Modified by ZeroM2M Authors in 2026
+#
 #	Unit tests for addressing methods
 #
 
@@ -26,6 +28,11 @@ class TestAddressing(unittest.TestCase):
 	@unittest.skipIf(noCSE, 'No CSEBase')
 	def setUpClass(cls) -> None:
 		testCaseStart('Setup TestAddressing')
+		global aeRN, aeURL, cntRN, cntURL
+		aeRN = uniqueRN('testAE')
+		cntRN = uniqueRN('testCNT')
+		aeURL = f'{cseURL}/{aeRN}'
+		cntURL = f'{aeURL}/{cntRN}'
 		dct = 	{ 'm2m:ae' : {
 					'rn'  : aeRN, 
 					'api' : APPID,

@@ -4,9 +4,9 @@
 #	(c) 2020 by Andreas Kraft
 #	License: BSD 3-Clause License. See the LICENSE file for further details.
 #
-#	Unit tests for CNT functionality
-#
 #	Modified by ZeroM2M Authors in 2026
+#
+#	Unit tests for CNT functionality
 #
 
 import unittest, sys
