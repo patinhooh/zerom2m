@@ -91,6 +91,7 @@ void SystemManager::StartServices()
 
     // Make sure the service is initialized before we start.
     onem2m::OneM2MService::Get().Initialize(config_);
+    onem2m::OneM2MService::Get().SetNetSubSystem(networkManager_.GetNetSubSystem());
 
     new tasks::BlinkTask(&scheduler_, &led_, 1000);
     new tasks::HttpServer(&networkManager_.GetNetSubSystem(), &led_, &config_);

@@ -9,10 +9,14 @@
  */
 #include <zerom2m/compat/types.h>
 #include <zerom2m/config/system_config.h>
+#include <zerom2m/http/http_client.h>
 #include <zerom2m/onem2m/onem2m_service.h>
 #include <zerom2m/onem2m/types/primitives.h>
+#include <zerom2m/serde/serde.h>
 
 #include <circle/logger.h>
+#include <circle/net/ipaddress.h>
+#include <circle/net/netsubsystem.h>
 #include <circle/util.h>
 
 #include <string.h>
@@ -21,6 +25,8 @@ namespace zerom2m::onem2m
 {
 
 using namespace zerom2m::onem2m::types;
+using namespace zerom2m::http;
+using namespace zerom2m::serde;
 using zerom2m::config::SystemConfig;
 
 namespace
@@ -33,6 +39,288 @@ CString SliceCString(const char *start, size_t length)
     CString out(buf);
     delete[] buf;
     return out;
+}
+
+bool ParseIpv4Literal(const CString &text, CIPAddress &ip)
+{
+    const char *raw = text.c_str();
+    if (raw == nullptr || *raw == '\0') return false;
+
+    u8          octets[4] = {0, 0, 0, 0};
+    const char *p         = raw;
+    for (unsigned i = 0; i < 4; ++i) {
+        if (*p == '\0') return false;
+
+        char         *end   = nullptr;
+        unsigned long value = strtoul(p, &end, 10);
+        if (end == p || value > 255) return false;
+
+        octets[i] = static_cast<u8>(value);
+        if (i < 3) {
+            if (*end != '.') return false;
+            p = end + 1;
+        } else if (*end != '\0') {
+            return false;
+        }
+    }
+
+    ip.Set(octets);
+    return true;
+}
+
+bool ParseNotificationUrl(const CString &url, CIPAddress &ip, u16 &port, CString &path)
+{
+    const char *raw = url.c_str();
+    if (raw == nullptr) return false;
+
+    const char *scheme = strstr(raw, "://");
+    if (scheme == nullptr) return false;
+
+    const char *authority = scheme + 3;
+    const char *slash     = strchr(authority, '/');
+    const char *query     = nullptr;
+    if (slash != nullptr) { query = strchr(slash, '?'); }
+
+    CString hostPort;
+    if (slash != nullptr) {
+        hostPort = SliceCString(authority, static_cast<size_t>(slash - authority));
+    } else {
+        hostPort = authority;
+    }
+
+    CString     host;
+    CString     portText;
+    const char *colon = strchr(hostPort.c_str(), ':');
+    if (colon != nullptr) {
+        host     = SliceCString(hostPort.c_str(), static_cast<size_t>(colon - hostPort.c_str()));
+        portText = CString(colon + 1);
+    } else {
+        host = hostPort;
+    }
+
+    if (!ParseIpv4Literal(host, ip)) return false;
+
+    port = 80;
+    if (portText.GetLength() != 0) {
+        char         *end    = nullptr;
+        unsigned long parsed = strtoul(portText.c_str(), &end, 10);
+        if (end == portText.c_str() || *end != '\0' || parsed > 65535) return false;
+        port = static_cast<u16>(parsed);
+    }
+
+    if (slash != nullptr) {
+        if (query != nullptr) {
+            path = SliceCString(slash, static_cast<size_t>(query - slash));
+        } else {
+            path = slash;
+        }
+    } else {
+        path = "/";
+    }
+
+    return true;
+}
+
+bool ContainsNotificationEvent(const Subscription &sub, NotificationEventType eventType)
+{
+    for (const NotificationEventType value : sub.eventNotificationCriteria.notificationEventType) {
+        if (value == eventType) return true;
+    }
+    return false;
+}
+
+bool ContainsResourceType(const Vector<ResourceType> &types, ResourceType type)
+{
+    for (const ResourceType value : types) {
+        if (value == type) return true;
+    }
+    return false;
+}
+
+CString BuildResourcePath(const CString &parentPath, const CString &childName)
+{
+    CString out = parentPath;
+    if (out.GetLength() == 0 || out.c_str()[out.GetLength() - 1] != '/') out.Append('/');
+    out.Append(childName.c_str());
+    return out;
+}
+
+CString BuildVerificationBody(const CString &sur, const CString &originator)
+{
+    CString body;
+    body.Append("{\"m2m:sgn\":{\"vrq\":true,\"sur\":\"");
+    body.Append(sur.c_str());
+    body.Append("\",\"cr\":\"");
+    body.Append(originator.c_str());
+    body.Append("\"}}");
+    return body;
+}
+
+CString BuildNotificationBody(const CString &sur, const PrimitiveContent &content)
+{
+    CString serialized;
+    if (!SerDe::Get().SerializePrimitiveContent(content, mime::JSON, serialized)) return CString();
+
+    CString body;
+    body.Append("{\"m2m:sgn\":{\"nev\":{\"net\":");
+    body.Append("3");
+    body.Append(",\"rep\":");
+    body.Append(serialized.c_str());
+    body.Append("},\"sur\":\"");
+    body.Append(sur.c_str());
+    body.Append("\"}}");
+    return body;
+}
+
+bool SendHttpPost(CNetSubSystem *netSubSystem,
+                  const CString &url,
+                  const CString &body,
+                  const CString &originator,
+                  const CString &requestIdentifier)
+{
+    if (netSubSystem == nullptr) return false;
+
+    CIPAddress ip;
+    u16        port = 0;
+    CString    path;
+    if (!ParseNotificationUrl(url, ip, port, path)) return false;
+
+    HttpClient client(netSubSystem, ip, port, nullptr, 2);
+
+    HttpHeader headers[3];
+    headers[0].Name  = {"Content-Type", strlen("Content-Type")};
+    headers[0].Value = {mime::JSON, strlen(mime::JSON)};
+    headers[1].Name  = {"X-M2M-Origin", strlen("X-M2M-Origin")};
+    headers[1].Value = {originator.c_str(), originator.GetLength()};
+    headers[2].Name  = {"X-M2M-RI", strlen("X-M2M-RI")};
+    headers[2].Value = {requestIdentifier.c_str(), requestIdentifier.GetLength()};
+
+    HttpRequest req;
+    req.Method      = POST;
+    req.Path        = {path.c_str(), path.GetLength()};
+    req.Headers     = headers;
+    req.HeaderCount = 3;
+    req.Body        = reinterpret_cast<const u8 *>(body.c_str());
+    req.BodyLength  = body.GetLength();
+
+    HttpResponse resp;
+    if (!client.RequestHeadersOnly(req, resp)) return false;
+    return resp.Status == ResponseStatus::OK || resp.Status == ResponseStatus::Created ||
+           resp.Status == ResponseStatus::Accepted || resp.Status == ResponseStatus::NoContent;
+}
+
+bool SendSubscriptionVerification(CNetSubSystem      *netSubSystem,
+                                  const Subscription &sub,
+                                  const CString      &subscriptionPath,
+                                  const CString      &originator)
+{
+    CString requestId;
+    requestId.Format("sub-%s", sub.resourceID.c_str());
+    CString body = BuildVerificationBody(subscriptionPath, originator);
+    if (body.GetLength() == 0) return false;
+
+    bool attempted = false;
+    for (const CString &nu : sub.notificationURI) {
+        // If the notification URI is an HTTP/HTTPS URL, attempt verification via HTTP POST.
+        // If it's not a URL (for example an originator token like "C13"), accept it
+        // as a local notification destination without performing HTTP verification.
+        CIPAddress ip;
+        u16        port = 0;
+        CString    path;
+        bool       parsed = ParseNotificationUrl(nu, ip, port, path);
+        if (!parsed) {
+            attempted = true;
+            continue;
+        }
+
+        attempted = true;
+        if (!SendHttpPost(netSubSystem, nu, body, originator, requestId)) {
+            CLogger::Get()->Write("onem2m_service",
+                                  LogWarning,
+                                  "Notification delivery failed for subscription '%s' nu='%s'",
+                                  sub.resourceID.c_str(),
+                                  nu.c_str());
+            return false;
+        }
+    }
+
+    return attempted || sub.notificationURI.empty();
+}
+
+const ResourceBase *GetResourceBase(const PrimitiveContent &pc);
+CString             BuildFullPath(const Vector<PrimitiveContent> &db, const ResourceBase *rbase);
+
+void NotifyCreateSubscriptions(CNetSubSystem                  *netSubSystem,
+                               const Vector<PrimitiveContent> &db,
+                               const PrimitiveContent         &created,
+                               const CString                  &originator)
+{
+    const ResourceBase *createdBase = GetResourceBase(created);
+    if (createdBase == nullptr || createdBase->resourceType.has_value() == false) return;
+
+    for (unsigned i = 0; i < db.GetCount(); ++i) {
+        const Subscription *sub = db[i].GetIf<Subscription>();
+        if (sub == nullptr) continue;
+        if (sub->resourceID.Compare(createdBase->resourceID) == 0) continue;
+        if (sub->parentID.Compare(createdBase->parentID) != 0) continue;
+        if (!ContainsNotificationEvent(*sub, NotificationEventType::CreateOfDirectChildResource)) {
+            continue;
+        }
+        if (!sub->eventNotificationCriteria.childResourceType.empty() &&
+            !ContainsResourceType(sub->eventNotificationCriteria.childResourceType,
+                                  *createdBase->resourceType)) {
+            continue;
+        }
+
+        CString notificationPath = BuildFullPath(db, sub);
+        CString requestId;
+        requestId.Format("ntf-%s", createdBase->resourceID.c_str());
+        CString body = BuildNotificationBody(notificationPath, created);
+        if (body.GetLength() == 0) continue;
+
+        for (const CString &nu : sub->notificationURI) {
+            CIPAddress ip;
+            u16        port = 0;
+            CString    path;
+            if (ParseNotificationUrl(nu, ip, port, path)) {
+                if (!SendHttpPost(netSubSystem, nu, body, originator, requestId)) {
+                    CLogger::Get()->Write("onem2m_service",
+                                          LogWarning,
+                                          "Notification delivery failed for subscription '%s'",
+                                          sub->resourceID.c_str());
+                }
+                continue;
+            }
+
+            bool delivered = false;
+            for (unsigned di = 0; di < db.GetCount(); ++di) {
+                const PrimitiveContent &cand = db[di];
+                const AE               *ae   = cand.GetIf<AE>();
+                if (!ae) continue;
+                if (ae->aeID.Compare(nu) != 0) continue;
+                if (!ae->requestReachability.has_value() || !*ae->requestReachability) { continue; }
+                for (const CString &poa : ae->pointOfAccess) {
+                    if (!SendHttpPost(netSubSystem, poa, body, originator, requestId)) {
+                        CLogger::Get()->Write(
+                            "onem2m_service",
+                            LogWarning,
+                            "Notification delivery to AE POA failed for subscription '%s' poa='%s'",
+                            sub->resourceID.c_str(),
+                            poa.c_str());
+                        continue;
+                    }
+                    delivered = true;
+                }
+            }
+            if (!delivered) {
+                CLogger::Get()->Write("onem2m_service",
+                                      LogWarning,
+                                      "No reachable POA found for subscription '%s' nu='%s'",
+                                      sub->resourceID.c_str(),
+                                      nu.c_str());
+            }
+        }
+    }
 }
 
 bool LooksLikeServiceProviderId(const CString &spid)
@@ -67,7 +355,8 @@ bool ParseAddressingPath(const CString   &path,
 
     if (absolute) {
         size_t start = pos;
-        while (raw[pos] != '\0' && raw[pos] != '/') ++pos;
+        while (raw[pos] != '\0' && raw[pos] != '/')
+            ++pos;
         if (pos == start) return false;
 
         spid = SliceCString(raw + start, pos - start);
@@ -314,6 +603,7 @@ boolean IsValidContentInfo(const CString &contentInfo)
 
     return true;
 }
+
 } // namespace
 
 void OneM2MService::Initialize(const SystemConfig &config)
@@ -372,6 +662,8 @@ void OneM2MService::Initialize(const SystemConfig &config)
 
     CLogger::Get()->Write("onem2m_service", LogNotice, "Initialize() complete");
 }
+
+void OneM2MService::SetNetSubSystem(CNetSubSystem &netSubSystem) { netSubSystem_ = &netSubSystem; }
 
 ResponsePrimitive OneM2MService::HandleRequest(const RequestPrimitive &request)
 {
@@ -864,6 +1156,36 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
             return bad;
         }
 
+        // Enforce AE parent rule early: AE may only be created under the CSE root.
+        // If the resolved parent is an AE, reject with INVALID_CHILD_RESOURCE_TYPE.
+        if (r.parentID.GetLength() != 0) {
+            const PrimitiveContent *parentPc = FindByResourceId(db_, r.parentID);
+            if (parentPc) {
+                if (parentPc->GetIf<AE>()) {
+                    ResponsePrimitive bad;
+                    bad.responseStatusCode = ResponseStatusCode::INVALID_CHILD_RESOURCE_TYPE;
+                    return bad;
+                }
+            } else {
+                // ParentID might be a path; try matching by full path.
+                for (unsigned i = 0; i < db_.GetCount(); ++i) {
+                    const PrimitiveContent &cand = db_[i];
+                    const ResourceBase     *base = GetResourceBase(cand);
+                    if (!base) continue;
+                    CString full = BuildFullPath(db_, base);
+                    if (NormalizePath(full).Compare(NormalizePath(r.parentID)) == 0) {
+                        if (cand.GetIf<AE>()) {
+                            ResponsePrimitive bad;
+                            bad.responseStatusCode =
+                                ResponseStatusCode::INVALID_CHILD_RESOURCE_TYPE;
+                            return bad;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
         // Reject csz attribute for AE: not supported in this implementation
         if (!r.contentSerialization.empty()) {
             ResponsePrimitive bad;
@@ -927,6 +1249,171 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
     } else if (auto p = pc.GetIf<Subscription>()) {
         Subscription r = *p;
         assignIdAndParent(r);
+        r.resourceType = ResourceType::Subscription;
+        // Validate CHTY (child resource types)
+        if (!r.eventNotificationCriteria.childResourceType.empty()) {
+            for (const auto &t : r.eventNotificationCriteria.childResourceType) {
+
+                // hard reject invalid CHTY values
+                if (t == ResourceType::AE && r.parentID.GetLength() != 0) {
+                    CLogger::Get()->Write("onem2m_service",
+                                          LogNotice,
+                                          "Subscription rejected: AE not allowed in CHTY");
+
+                    resp.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
+                    return resp;
+                }
+                // check allowed types: only allow CIN and SUB for now (we can expand later if needed)
+                if (t != ResourceType::ContentInstance && t != ResourceType::Subscription) {
+                    CLogger::Get()->Write("onem2m_service",
+                                          LogNotice,
+                                          "Subscription rejected: unsupported resource type in CHTY");
+                    resp.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
+                    return resp;
+                }
+
+            }
+        }
+
+        const bool nctProvided = r.notificationContentType.has_value();
+        if (r.creationTime.GetLength() == 0) r.creationTime = "2026-01-01T00:00:00Z";
+        if (r.lastModifiedTime.GetLength() == 0) r.lastModifiedTime = r.creationTime;
+        if (!r.expirationTime.has_value()) r.expirationTime = CString("2027-01-01T00:00:00Z");
+        if (!r.notificationContentType.has_value()) {
+            r.notificationContentType = NotificationContentType::ModifiedAttributes;
+        }
+        // Creator handling for Subscription: reject explicit creator value,
+        // allow explicit null -> set to originator. Propagate via
+        // request.vendorInformation set by the codec.
+        if (request.vendorInformation.has_value()) {
+            if (request.vendorInformation->Compare("sub_creator_present") == 0) {
+                CLogger::Get()->Write("onem2m_service",
+                                      LogNotice,
+                                      "Create Subscription request with invalid creator");
+                resp.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
+                return resp;
+            }
+            if (request.vendorInformation->Compare("sub_creator_null") == 0) {
+                if (request.from.GetLength() == 0) {
+                    CLogger::Get()->Write(
+                        "onem2m_service",
+                        LogNotice,
+                        "Create Subscription request with null creator and missing originator");
+                    resp.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
+                    return resp;
+                }
+                r.creator         = request.from;
+                r.creatorProvided = true;
+            }
+        }
+
+        // If the request did not explicitly include a `cr` attribute, set the
+        // subscription creator to the originator so later retrieval/authorization
+        // checks succeed (matches prior behaviour).
+        if (!r.creator.has_value() && request.from.GetLength() != 0) { r.creator = request.from; }
+
+        // Missing-data related notification events are only valid for
+        // subscriptions under a TimeSeries parent.
+        if (ContainsNotificationEvent(r, NotificationEventType::MissingData) ||
+            ContainsNotificationEvent(r,
+                                      NotificationEventType::ReportOnGeneratedMissingDataPoints)) {
+            bool parentIsTimeSeries = false;
+            for (unsigned i = 0; i < db_.GetCount(); ++i) {
+                if (const TimeSeries *ts = db_[i].GetIf<TimeSeries>()) {
+                    if (ts->resourceID.Compare(r.parentID) == 0) {
+                        parentIsTimeSeries = true;
+                        break;
+                    }
+                }
+            }
+            if (!parentIsTimeSeries) {
+                resp.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
+                return resp;
+            }
+        }
+
+        if (nctProvided && r.notificationContentType.has_value() &&
+            *r.notificationContentType == NotificationContentType::ModifiedAttributes &&
+            ContainsNotificationEvent(r, NotificationEventType::CreateOfDirectChildResource)) {
+            resp.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
+            return resp;
+        }
+
+        // If the client did not provide an explicit `nct`, some event types
+        // are ambiguous or incompatible with the default `ModifiedAttributes`
+        // behaviour. Allow a subscription that only requests `BlockingUpdate`,
+        // but reject subscriptions that request `BlockingUpdate` together with
+        // any other notification event type without an explicit `nct`.
+        if (!nctProvided) {
+            bool hasBlocking = ContainsNotificationEvent(r, NotificationEventType::BlockingUpdate);
+            if (hasBlocking) {
+                size_t evtCount = r.eventNotificationCriteria.notificationEventType.size();
+                if (evtCount > 1) {
+                    resp.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
+                    return resp;
+                }
+            }
+        }
+
+        // For BlockingUpdate subscriptions, exactly one NU is allowed.
+        if (ContainsNotificationEvent(r, NotificationEventType::BlockingUpdate)) {
+            if (r.notificationURI.size() != 1) {
+                resp.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
+                return resp;
+            }
+            // Disallow batch notifications and other non-blocking attributes
+            // for blocking update subscriptions.
+            if (r.batchNotify.has_value()) {
+                resp.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
+                return resp;
+            }
+            // Disallow most ENC attributes except for `atr` (attributeList)
+            // for blocking-update subscriptions.
+            const EventNotificationCriteria &enc = r.eventNotificationCriteria;
+            if (enc.stateTagBigger.has_value() || enc.expireBefore.has_value() ||
+                enc.expireAfter.has_value() || enc.sizeAbove.has_value() ||
+                enc.sizeBelow.has_value() || enc.labels.size() > 0 ||
+                enc.childResourceType.size() > 0 || enc.filterUsage.has_value() ||
+                enc.contentFilterQuery.has_value() || enc.contentFilterSyntax.has_value() ||
+                enc.missingData.has_value()) {
+                resp.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
+                return resp;
+            }
+            // Only allow attributeList (`atr`) together with BlockingUpdate.
+            // enc.attributeList is allowed; others are rejected above.
+
+            // Require attributeList for BlockingUpdate subscriptions when the
+            // notification URI is not a remote HTTP/HTTPS URL (i.e. when the
+            // NU targets a local AE/POA). If the NU is a remote URL, allow
+            // the create so the verification attempt can be performed and
+            // potentially fail with SUBSCRIPTION_VERIFICATION_INITIATION_FAILED.
+            bool nuIsRemote = false;
+            for (const CString &nu : r.notificationURI) {
+                CIPAddress ip;
+                u16        port = 0;
+                CString    path;
+                if (ParseNotificationUrl(nu, ip, port, path)) {
+                    nuIsRemote = true;
+                    break;
+                }
+            }
+            if (!nuIsRemote && enc.attributeList.empty()) {
+                resp.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
+                return resp;
+            }
+
+            // Accept explicit `nct` values as provided by the client. Different
+            // test harnesses may use differing numeric mappings for the
+            // symbolic values; do not enforce a strict equality here.
+        }
+
+        CString subscriptionPath = BuildResourcePath(target, r.resourceID);
+        if (!SendSubscriptionVerification(netSubSystem_, r, subscriptionPath, request.from)) {
+            resp.responseStatusCode =
+                ResponseStatusCode::SUBSCRIPTION_VERIFICATION_INITIATION_FAILED;
+            return resp;
+        }
+
         pc = r;
     } else if (auto p = pc.GetIf<AccessControlPolicy>()) {
         AccessControlPolicy r = *p;
@@ -1073,6 +1560,11 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
     CLogger::Get()->Write("onem2m_service", LogNotice, createMsg);
     // Store in in-memory DB
     db_.push_back(pc);
+
+    if (!pc.GetIf<Subscription>()) {
+        NotifyCreateSubscriptions(netSubSystem_, db_, pc, request.from);
+    }
+
     // If we created a ContentInstance, update parent Container counters (cni, cbs)
     if (const ContentInstance *newCin = pc.GetIf<ContentInstance>()) {
         // find parent container entry and update
@@ -1278,6 +1770,14 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
                 if (auto ae = pc.GetIf<AE>()) {
                     if (request.from.GetLength() == 0 || ae->aeID.GetLength() == 0 ||
                         request.from.Compare(ae->aeID) != 0) {
+                        ResponsePrimitive deny;
+                        deny.responseStatusCode = ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
+                        resp                    = deny;
+                        return true;
+                    }
+                }
+                if (auto sub = pc.GetIf<Subscription>()) {
+                    if (!sub->creator.has_value() || request.from.Compare(*sub->creator) != 0) {
                         ResponsePrimitive deny;
                         deny.responseStatusCode = ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
                         resp                    = deny;

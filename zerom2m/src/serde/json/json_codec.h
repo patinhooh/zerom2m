@@ -71,6 +71,7 @@ private:
     boolean DeserializeContentInstance(const JsonValue &root, RequestPrimitive &out) const;
     boolean DeserializeGroup(const JsonValue &root, RequestPrimitive &out) const;
     boolean DeserializeSubscription(const JsonValue &root, RequestPrimitive &out) const;
+    boolean DeserializeTimeSeries(const JsonValue &root, RequestPrimitive &out) const;
 
     // Primitive-envelope helpers
     boolean ParsePrimitiveFields(const JsonValue &obj, RequestPrimitive &out) const;

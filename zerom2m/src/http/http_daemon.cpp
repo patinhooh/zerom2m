@@ -7,9 +7,7 @@
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
-#include "http_parser.h"
-#include "http_serializer.h"
-
+#include <zerom2m/http/http_codec.h>
 #include <zerom2m/http/http_daemon.h>
 
 #include <assert.h>
@@ -210,8 +208,7 @@ void HttpDaemon::Worker(void)
     bool   foundEnd  = false;
 
     for (size_t i = 0; i + 3 < totalRecv; i++) {
-        if (pBuf[i] == '\r' && pBuf[i+1] == '\n' &&
-            pBuf[i+2] == '\r' && pBuf[i+3] == '\n') {
+        if (pBuf[i] == '\r' && pBuf[i + 1] == '\n' && pBuf[i + 2] == '\r' && pBuf[i + 3] == '\n') {
             headerEnd = i + 4;
             foundEnd  = true;
             break;
@@ -222,14 +219,10 @@ void HttpDaemon::Worker(void)
         u8 saved        = pBuf[headerEnd];
         pBuf[headerEnd] = '\0';
 
-        size_t contentLength = 0;
-        const char *clHeader = strstr((const char *)pBuf, "Content-Length: ");
-        if (clHeader == nullptr) {
-            clHeader = strstr((const char *)pBuf, "content-length: ");
-        }
-        if (clHeader != nullptr) {
-            contentLength = (size_t)atoi(clHeader + 16);
-        }
+        size_t      contentLength = 0;
+        const char *clHeader      = strstr((const char *)pBuf, "Content-Length: ");
+        if (clHeader == nullptr) { clHeader = strstr((const char *)pBuf, "content-length: "); }
+        if (clHeader != nullptr) { contentLength = (size_t)atoi(clHeader + 16); }
 
         pBuf[headerEnd] = saved;
 
@@ -237,35 +230,39 @@ void HttpDaemon::Worker(void)
         while (bodyReceived < contentLength) {
             size_t spaceLeft = bufSize - totalRecv;
             if (spaceLeft == 0) {
-                CLogger::Get()->Write(FromHttpDaemon, LogWarning,
+                CLogger::Get()->Write(
+                    FromHttpDaemon,
+                    LogWarning,
                     "Buffer full before body complete: bufSize=%u contentLength=%u",
-                    (unsigned)bufSize, (unsigned)contentLength);
+                    (unsigned)bufSize,
+                    (unsigned)contentLength);
                 break;
             }
             size_t remaining = contentLength - bodyReceived;
             size_t toRead    = remaining < spaceLeft ? remaining : spaceLeft;
-            int n = socket_->Receive((char *)pBuf + totalRecv, toRead, 0);
+            int    n         = socket_->Receive((char *)pBuf + totalRecv, toRead, 0);
             if (n <= 0) {
-                CLogger::Get()->Write(FromHttpDaemon, LogWarning,
-                    "Receive failed waiting for body: got=%u need=%u",
-                    (unsigned)bodyReceived, (unsigned)contentLength);
+                CLogger::Get()->Write(FromHttpDaemon,
+                                      LogWarning,
+                                      "Receive failed waiting for body: got=%u need=%u",
+                                      (unsigned)bodyReceived,
+                                      (unsigned)contentLength);
                 break;
             }
-            totalRecv    += (size_t)n;
+            totalRecv += (size_t)n;
             bodyReceived += (size_t)n;
         }
     }
 
-    HttpParser     parser;
     HttpRequest    request;
-    ResponseStatus status = parser.Parse(pBuf, totalRecv, request);
+    ResponseStatus status = HttpCodec::ParseRequest(pBuf, totalRecv, request);
     if (status != ResponseStatus::OK) {
         HttpResponse resp;
         resp.Status     = status;
         resp.Body       = nullptr;
         resp.BodyLength = 0;
         CString header;
-        HttpSerializer::Serialize(resp, header);
+        HttpCodec::SerializeResponse(resp, header);
         socket_->Send((const char *)header, header.GetLength(), MSG_DONTWAIT);
         CLogger::Get()->Write(FromHttpDaemon, LogWarning, "Parse failed status=%u", status);
         delete[] pBuf;
@@ -278,61 +275,62 @@ void HttpDaemon::Worker(void)
     if (handler_) {
         // Parse query string into QueryParams so handlers can read rcn, rp, etc.
         QueryParam *ownedParams = nullptr;
-        size_t paramCount = 0;
+        size_t      paramCount  = 0;
         if (request.Query.Data && request.Query.Length > 0) {
             // Count parameters (split on '&')
             const char *q = request.Query.Data;
             // make writable within pBuf - ParseRequestLine ensured null-termination
             // Count params
             paramCount = 1;
-            for (const char *c = q; *c; ++c) if (*c == '&') ++paramCount;
+            for (const char *c = q; *c; ++c)
+                if (*c == '&') ++paramCount;
             ownedParams = new QueryParam[paramCount];
 
             size_t idx = 0;
-            char *p = const_cast<char *>(q);
+            char  *p   = const_cast<char *>(q);
             while (p && *p && idx < paramCount) {
                 char *name = p;
-                char *eq = strchr(p, '=');
-                char *amp = strchr(p, '&');
+                char *eq   = strchr(p, '=');
+                char *amp  = strchr(p, '&');
                 if (eq == nullptr) {
                     // name only
                     if (amp) {
-                        *amp = '\0';
-                        ownedParams[idx].Name.Data = name;
-                        ownedParams[idx].Name.Length = strlen(name);
-                        ownedParams[idx].Value.Data = nullptr;
+                        *amp                          = '\0';
+                        ownedParams[idx].Name.Data    = name;
+                        ownedParams[idx].Name.Length  = strlen(name);
+                        ownedParams[idx].Value.Data   = nullptr;
                         ownedParams[idx].Value.Length = 0;
-                        p = amp + 1;
+                        p                             = amp + 1;
                     } else {
-                        ownedParams[idx].Name.Data = name;
-                        ownedParams[idx].Name.Length = strlen(name);
-                        ownedParams[idx].Value.Data = nullptr;
+                        ownedParams[idx].Name.Data    = name;
+                        ownedParams[idx].Name.Length  = strlen(name);
+                        ownedParams[idx].Value.Data   = nullptr;
                         ownedParams[idx].Value.Length = 0;
-                        p = nullptr;
+                        p                             = nullptr;
                     }
                 } else {
                     // name=value
-                    *eq = '\0';
+                    *eq       = '\0';
                     char *val = eq + 1;
                     if (amp) {
-                        *amp = '\0';
-                        ownedParams[idx].Name.Data = name;
-                        ownedParams[idx].Name.Length = strlen(name);
-                        ownedParams[idx].Value.Data = val;
+                        *amp                          = '\0';
+                        ownedParams[idx].Name.Data    = name;
+                        ownedParams[idx].Name.Length  = strlen(name);
+                        ownedParams[idx].Value.Data   = val;
                         ownedParams[idx].Value.Length = strlen(val);
-                        p = amp + 1;
+                        p                             = amp + 1;
                     } else {
-                        ownedParams[idx].Name.Data = name;
-                        ownedParams[idx].Name.Length = strlen(name);
-                        ownedParams[idx].Value.Data = val;
+                        ownedParams[idx].Name.Data    = name;
+                        ownedParams[idx].Name.Length  = strlen(name);
+                        ownedParams[idx].Value.Data   = val;
                         ownedParams[idx].Value.Length = strlen(val);
-                        p = nullptr;
+                        p                             = nullptr;
                     }
                 }
                 ++idx;
             }
             // attach to request for handler to use
-            request.QueryParams = ownedParams;
+            request.QueryParams     = ownedParams;
             request.QueryParamCount = paramCount;
         }
 
@@ -340,7 +338,7 @@ void HttpDaemon::Worker(void)
 
         if (ownedParams) {
             delete[] ownedParams;
-            request.QueryParams = nullptr;
+            request.QueryParams     = nullptr;
             request.QueryParamCount = 0;
         }
     } else {
@@ -358,7 +356,7 @@ void HttpDaemon::Worker(void)
     }
 
     CString header;
-    HttpSerializer::Serialize(response, header);
+    HttpCodec::SerializeResponse(response, header);
     if (socket_->Send((const char *)header, header.GetLength(), MSG_DONTWAIT) < 0) {
         CLogger::Get()->Write(FromHttpDaemon, LogError, "Cannot send response header");
         delete[] pBuf;

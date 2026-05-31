@@ -14,6 +14,7 @@
 #include <zerom2m/config/system_config.h>
 #include <zerom2m/onem2m/types/resources.h>
 
+#include <circle/net/netsubsystem.h>
 #include <circle/types.h>
 
 namespace zerom2m::onem2m
@@ -38,6 +39,7 @@ public:
     OneM2MService &operator=(OneM2MService &&)      = delete;
 
     void              Initialize(const SystemConfig &config);
+    void              SetNetSubSystem(CNetSubSystem &netSubSystem);
     ResponsePrimitive HandleRequest(const RequestPrimitive &request);
     ResponsePrimitive Create(const RequestPrimitive &request);
     ResponsePrimitive Retrieve(const RequestPrimitive &request);
@@ -51,6 +53,7 @@ private:
 
     boolean initialized_ = false;
     CString spId_;
+    CNetSubSystem *netSubSystem_{nullptr};
 
     // TODO: Add proper way of storing data.
     // Simple in-memory DB abstraction. Stores PrimitiveContent objects representing created

@@ -122,8 +122,8 @@ struct Group : ResourceBase {
 
 // Subscription (sub), ty=23
 struct BatchNotify {
-    s32 number   = 0;
-    s32 duration = 0; // seconds
+    s32              number = 0;
+    Optional<CString> duration; // ISO8601 duration (dur)
 };
 
 struct RateLimit {
@@ -145,6 +145,7 @@ struct EventNotificationCriteria {
     Optional<s64>                 sizeBelow;
     Vector<NotificationEventType> notificationEventType; // net
     Vector<ResourceType>          childResourceType;     // chty
+    Vector<CString>               attributeList;         // atr
     Optional<FilterUsage>         filterUsage;
     Optional<CString>             contentFilterQuery;
     Optional<CString>             contentFilterSyntax;
@@ -167,6 +168,7 @@ struct Subscription : ResourceBase {
     Optional<u8>                      notificationEventCat;        // nec
     Optional<CString>                 subscriberURI;               // su
     Optional<CString>                 creator;                     // cr
+    Optional<boolean>                 creatorProvided;             // internal flag: cr was explicitly provided (including null)
     Optional<CString>                 groupName;                   // gn
     Optional<CString>                 associatedCrossResourceSub;  // acrs
 };

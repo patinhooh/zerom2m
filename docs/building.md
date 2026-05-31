@@ -65,7 +65,6 @@ The [Root Makefile](../Makefile) is the **entry point for the entire build syste
 | `zerom2m` | Builds the ZeroM2M kernel |
 | `circle` | Builds the Circle bare-metal framework |
 | `check-zerom2m` | Runs a syntax check on ZeroM2M kernel without generating binaries |
-| `test-zerom2m` | Runs tests on a running ZeroM2M kernel |
 | `flash` \* | Flashes the built kernel to the Raspberry Pi via UART |
 | `monitor-<terminal>` \*\* | Opens a serial terminal to the Raspberry Pi for logs and interaction |
 | `qemu` | Run kernel image in QEMU, see [QEMU Setup](qemu.md) |
@@ -88,6 +87,7 @@ The [ZeroM2M Makefile](../zerom2m/Makefile) compiles the ZeroM2M kernel from C++
 | `all` | Default target; compiles the zerom2m binary |
 | `check` | Runs a syntax check on ZeroM2M kernel without generating binaries |
 | `test` | Runs tests on a running ZeroM2M kernel |
+| `test-all` | Runs all tests on a running ZeroM2M kernel |
 | `clean` | Removes all build artifacts |
 | `flash` \* | Flashes the built zerom2m to the Raspberry Pi via UART |
 | `monitor-<terminal>` \*\* | Opens a serial terminal to the Raspberry Pi for logs and interaction |

@@ -213,6 +213,7 @@ constexpr const char *EXPIRE_AFTER          = "exa";
 constexpr const char *LABELS                = "lbl";
 constexpr const char *LABELS_QUERY          = "lbq";
 constexpr const char *RESOURCE_TYPE         = "ty";
+constexpr const char *CHILD_RESOURCE_TYPE   = "chty";
 constexpr const char *SIZE_ABOVE            = "sza";
 constexpr const char *SIZE_BELOW            = "szb";
 constexpr const char *CONTENT_TYPE          = "cty";

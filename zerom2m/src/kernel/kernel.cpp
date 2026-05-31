@@ -14,8 +14,6 @@
 #include <zerom2m/kernel/kernel.h>
 #include <zerom2m/kernel/network_manager.h>
 
-#include <zerom2m/sqlite/sqlite3.h>
-
 namespace zerom2m::kernel
 {
 

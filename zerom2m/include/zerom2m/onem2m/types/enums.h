@@ -27,7 +27,7 @@ constexpr const char *XML_M2M  = "application/vnd.onem2m-res+xml";
 constexpr const char *CBOR_M2M = "application/vnd.onem2m-res+cbor";
 } // namespace mime
 
-// Operation (op), Table 8.2.2-1, value definitions from TS-0001
+// Operation (op),
 enum class Operation : u8 {
     Create      = 1,
     Retrieve    = 2,
@@ -37,7 +37,7 @@ enum class Operation : u8 {
     Unsupported = 0 // internal value for unsupported operations
 };
 
-// ResourceType (ty), Table 8.2.4-1
+// ResourceType (ty),
 enum class ResourceType : u32 {
     // Core resource types
     AccessControlPolicy             = 1,

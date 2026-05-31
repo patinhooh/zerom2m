@@ -29,23 +29,31 @@ namespace zerom2m::http
 class HttpClient
 {
 public:
-    HttpClient(CNetSubSystem *netSubSystem,
+    HttpClient(CNetSubSystem    *netSubSystem,
                const CIPAddress &serverIP,
-               u16 serverPort = DEFAULT_PORT,
-               const char *serverName = nullptr,
-               unsigned timeoutSeconds = 0);
+               u16               serverPort     = DEFAULT_PORT,
+               const char       *serverName     = nullptr,
+               unsigned          timeoutSeconds = 0);
 
     ~HttpClient(void);
 
     bool Request(const HttpRequest &request, HttpResponse &response);
 
-    bool Request(RequestMethod method,
-                 const char *path,
+    /**
+     * @brief Send request and read only response headers/status (no body parse).
+     *
+     * Useful for notification verification where only the response status
+     * matters; avoids allocating/parsing the response body.
+     */
+    bool RequestHeadersOnly(const HttpRequest &request, HttpResponse &response);
+
+    bool Request(RequestMethod     method,
+                 const char       *path,
                  const HttpHeader *headers,
-                 size_t headerCount,
-                 const u8 *body,
-                 size_t bodyLength,
-                 HttpResponse &response);
+                 size_t            headerCount,
+                 const u8         *body,
+                 size_t            bodyLength,
+                 HttpResponse     &response);
 
     bool Get(const char *path, HttpResponse &response);
     bool Post(const char *path, const u8 *body, size_t bodyLength, HttpResponse &response);
