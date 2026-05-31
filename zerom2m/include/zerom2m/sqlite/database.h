@@ -1,7 +1,11 @@
 /*
  * database.h
  *
- * SQLite wrapper for ZeroM2M resources
+ * ZeroM2M
+ * Copyright (C) 2026 ZeroM2M Authors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
 #pragma once
 
@@ -24,7 +28,7 @@ public:
     bool Open(const char *path, CString &err);
     void Close();
 
-    bool InitSchema(CString &err);
+    bool InitSchema();
 
     // Save a primitive content (resource) into DB. Uses ri as primary key.
     bool SavePrimitiveContent(const PrimitiveContent &pc, CString &err);

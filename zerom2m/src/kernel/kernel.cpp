@@ -15,6 +15,7 @@
 #include <zerom2m/kernel/network_manager.h>
 
 #include <zerom2m/sqlite/sqlite3.h>
+#include <zerom2m/sqlite/sqlite_vfs.h>
 
 namespace zerom2m::kernel
 {
@@ -31,22 +32,6 @@ SystemManager *gSystemManager = nullptr;
 void OnRebootMagic()
 {
     if (gSystemManager != nullptr) gSystemManager->RequestShutdown(ShutdownMode::Reboot);
-}
-
-void test_sqlite()
-{
-    sqlite3* db = nullptr;
-
-    int rc = sqlite3_initialize();
-    // should return SQLITE_OK (0)
-
-    rc = sqlite3_open(":memory:", &db);
-    // may fail OR may succeed depending on build flags
-
-    if (rc == SQLITE_OK)
-    {
-        sqlite3_close(db);
-    }
 }
 
 } // namespace
@@ -104,6 +89,12 @@ bool Kernel::Initialize()
         parser.DumpConfig();
     }
 
+    if (ok) {
+        ok = RegisterCircleVfs();
+        if (ok) CLogger::Get()->Write(FromKernel, LogNotice, "Circle VFS registered successfully");
+        else CLogger::Get()->Write(FromKernel, LogError, "Failed to register Circle VFS");
+    }
+
     // Network init is fully delegated to NetworkManager
     if (ok) ok = networkManager_.Initialize(systemConfig_);
 
@@ -122,8 +113,6 @@ ShutdownMode Kernel::Run()
     CLogger::Get()->Write(FromKernel, LogDebug, "Serial magic handler: %s", REBOOTMAGIC);
     serial_.RegisterMagicReceivedHandler(REBOOTMAGIC, OnRebootMagic);
 
-    test_sqlite();
-    return ShutdownMode::Halt;
     SystemManager sysMgr(led_, timer_, scheduler_, systemConfig_, networkManager_);
     gSystemManager = &sysMgr;
 

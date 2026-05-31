@@ -1,13 +1,18 @@
 /*
  * sqlite_vfs.cpp
  *
- * Custom VFS for SQLite on Circle bare-metal kernel.
- * Uses FatFs (FATFS) from Circle for file I/O.
+ * ZeroM2M
+ * Copyright (C) 2026 ZeroM2M Authors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
 #include <circle/string.h>
 #include <circle/util.h>
 #include <fatfs/ff.h>
 #include <zerom2m/sqlite/sqlite3.h>
+
+#include <circle/logger.h>
 
 // ---------------------------------------------------------------------------
 // File handle layout
@@ -51,6 +56,14 @@ static int circleRead(sqlite3_file *pFile, void *zBuf, int iAmt, sqlite3_int64 i
     CircleFile *f = toCircleFile(pFile);
     if (!f->valid) return SQLITE_IOERR_READ;
 
+    FSIZE_t fileSize = f_size(&f->fil);
+
+    // Empty file = new database. Signal short read so SQLite initializes it.
+    if (fileSize == 0) {
+        memset(zBuf, 0, iAmt);
+        return SQLITE_IOERR_SHORT_READ;
+    }
+
     if (f_lseek(&f->fil, (FSIZE_t)iOfst) != FR_OK) return SQLITE_IOERR_READ;
 
     UINT    nRead = 0;
@@ -59,8 +72,7 @@ static int circleRead(sqlite3_file *pFile, void *zBuf, int iAmt, sqlite3_int64 i
 
     if ((int)nRead == iAmt) return SQLITE_OK;
 
-    // Short read: zero-fill the remainder as required by the VFS contract
-    memset(static_cast<char *>(zBuf) + nRead, 0, (size_t)(iAmt - (int)nRead));
+    memset(static_cast<char *>(zBuf) + nRead, 0, (size_t)(iAmt - nRead));
     return SQLITE_IOERR_SHORT_READ;
 }
 
@@ -69,7 +81,8 @@ static int circleWrite(sqlite3_file *pFile, const void *zBuf, int iAmt, sqlite3_
     CircleFile *f = toCircleFile(pFile);
     if (!f->valid) return SQLITE_IOERR_WRITE;
 
-    if (f_lseek(&f->fil, (FSIZE_t)iOfst) != FR_OK) return SQLITE_IOERR_WRITE;
+    FRESULT rs = f_lseek(&f->fil, (FSIZE_t)iOfst);
+    if (rs != FR_OK) return SQLITE_IOERR_WRITE;
 
     UINT    nWritten = 0;
     FRESULT res      = f_write(&f->fil, zBuf, (UINT)iAmt, &nWritten);
@@ -93,8 +106,7 @@ static int circleSync(sqlite3_file *pFile, int /*flags*/)
 {
     CircleFile *f = toCircleFile(pFile);
     if (!f->valid) return SQLITE_OK;
-
-    if (f_sync(&f->fil) != FR_OK) return SQLITE_IOERR_FSYNC;
+    f_sync(&f->fil); // ignore error — best effort on bare metal
     return SQLITE_OK;
 }
 
@@ -103,7 +115,9 @@ static int circleFileSize(sqlite3_file *pFile, sqlite3_int64 *pSize)
     CircleFile *f = toCircleFile(pFile);
     if (!f->valid) return SQLITE_IOERR;
 
-    *pSize = (sqlite3_int64)f_size(&f->fil);
+    // f_size() returns stale value until sync — seek to end to get real size
+    if (f_lseek(&f->fil, f_size(&f->fil)) != FR_OK) return SQLITE_IOERR;
+    *pSize = (sqlite3_int64)f_tell(&f->fil);
     return SQLITE_OK;
 }
 
@@ -149,12 +163,15 @@ static const sqlite3_io_methods circleMethods = {
 static int circleOpen(
     sqlite3_vfs * /*pVfs*/, const char *zName, sqlite3_file *pFile, int flags, int *pOutFlags)
 {
+    CLogger::Get()->Write(
+        "vfs", LogNotice, "OPEN called: '%s' flags=0x%x", zName ? zName : "(null)", flags);
     CircleFile *f = toCircleFile(pFile);
     f->valid      = 0;
     // pMethods must be set even on failure so SQLite can call xClose safely
     pFile->pMethods = nullptr;
 
-    if (!zName) return SQLITE_CANTOPEN;
+    const char *normalizedPath = zName;
+    if (!normalizedPath) return SQLITE_CANTOPEN;
 
     // Build FatFs open flags from SQLite open flags
     BYTE fflags = 0;
@@ -209,16 +226,14 @@ static void  circleDlError(sqlite3_vfs *, int n, char *z)
 static void (*circleDlSym(sqlite3_vfs *, void *, const char *))(void) { return nullptr; }
 static void circleDlClose(sqlite3_vfs *, void *) {}
 
-
-
 static int circleRandomness(sqlite3_vfs * /*pVfs*/, int nByte, char *zBuf)
 {
-    static unsigned seed = 0x12345678;   
-    for (int i = 0; i < nByte; i++){
-        seed = seed * 1103515245 + 12345;
+    static unsigned seed = 0x12345678;
+    for (int i = 0; i < nByte; i++) {
+        seed    = seed * 1103515245 + 12345;
         zBuf[i] = (char)((seed >> 16) & 0xFF);
     }
-    
+
     return nByte;
 }
 
@@ -265,20 +280,24 @@ static sqlite3_vfs circleVfs = {
     circleRandomness,
     circleSleep,
     circleCurrentTime,
-    nullptr,               /* xGetLastError (v2) */
+    nullptr,                /* xGetLastError (v2) */
     circleCurrentTimeInt64, /* xCurrentTimeInt64 (v3) */
-    nullptr, // xSetSystemCall
-    nullptr, // xGetSystemCall
-    nullptr  // xNextSystemCall
+    nullptr,                // xSetSystemCall
+    nullptr,                // xGetSystemCall
+    nullptr                 // xNextSystemCall
 };
 
-// ---------------------------------------------------------------------------
-// Called by SQLite during sqlite3_initialize()
-// ---------------------------------------------------------------------------
-extern "C" int sqlite3_os_init(void)
+bool RegisterCircleVfs()
 {
-    // makeDefault = 1 so sqlite3_open() uses "circle" without an explicit URI
-    return sqlite3_vfs_register(&circleVfs, 1);
+    int i = sqlite3_vfs_register(&circleVfs, 0);
+
+    sqlite3_vfs *vfs = sqlite3_vfs_find("circle");
+    CLogger::Get()->Write("vfs", LogNotice, "VFS registered: %p", vfs);
+
+    return i == SQLITE_OK;
 }
 
+// Called by SQLite during sqlite3_initialize(), but we call it on kernel init to ensure our VFS is
+// registered before any DB operations.
+extern "C" int sqlite3_os_init(void) { return SQLITE_OK; }
 extern "C" int sqlite3_os_end(void) { return SQLITE_OK; }
