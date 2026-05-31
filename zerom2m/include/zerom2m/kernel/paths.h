@@ -13,3 +13,4 @@
 #define WLAN_PATH DRIVE "/wlan/"
 #define WPA_PATH DRIVE "/wpa_supplicant.conf"
 #define CONFIG_PATH DRIVE "/system.cfg"
+#define DB_PATH DRIVE "/zerom2m.db"
