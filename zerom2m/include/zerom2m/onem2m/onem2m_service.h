@@ -10,9 +10,10 @@
 #pragma once
 
 #include <zerom2m/compat/vector.h>
-#include <zerom2m/onem2m/types/primitives.h>
 #include <zerom2m/config/system_config.h>
+#include <zerom2m/onem2m/types/primitives.h>
 #include <zerom2m/onem2m/types/resources.h>
+#include <zerom2m/sqlite/database.h>
 
 #include <circle/net/netsubsystem.h>
 #include <circle/types.h>
@@ -41,27 +42,47 @@ public:
     void              Initialize(const SystemConfig &config);
     void              SetNetSubSystem(CNetSubSystem &netSubSystem);
     ResponsePrimitive HandleRequest(const RequestPrimitive &request);
+
     ResponsePrimitive Create(const RequestPrimitive &request);
+    ResponsePrimitive CreateAE(const AE &ae, const RequestPrimitive &req, const CString &target);
+    ResponsePrimitive CreateContainer(const Container &con, const RequestPrimitive &req, const CString &target);
+    ResponsePrimitive CreateContentInstance(const ContentInstance &cin, const RequestPrimitive &req, const CString &target);
+    ResponsePrimitive CreateSubscription(const Subscription &sub, const RequestPrimitive &req, const CString &target);
+
     ResponsePrimitive Retrieve(const RequestPrimitive &request);
+    ResponsePrimitive RetrieveCSE(const RequestPrimitive &request,
+                                  const CSEBase       &cse,
+                                  const CString       &target);
+    ResponsePrimitive RetrieveAE(const RequestPrimitive &request,
+                                 const AE            &ae,
+                                 const CString       &target);
+    ResponsePrimitive RetrieveContainer(const RequestPrimitive &request,
+                                       const Container   &con,
+                                       const CString     &target);
+    ResponsePrimitive RetrieveContentInstance(const RequestPrimitive &request,
+                                              const ContentInstance &cin,
+                                              const CString         &target);
+    ResponsePrimitive RetrieveSubscription(const RequestPrimitive &request,
+                                            const Subscription    &sub,
+                                            const CString         &target);
+
+    // XXX: Not Implemented.
     ResponsePrimitive Update(const RequestPrimitive &request);
     ResponsePrimitive Delete(const RequestPrimitive &request);
-    ResponsePrimitive Notify(const RequestPrimitive &request);
 
 private:
     OneM2MService()  = default;
     ~OneM2MService() = default;
 
-    boolean initialized_ = false;
-    CString spId_;
     CNetSubSystem *netSubSystem_{nullptr};
 
-    // TODO: Add proper way of storing data.
-    // Simple in-memory DB abstraction. Stores PrimitiveContent objects representing created
-    // resources. This will later be replaced with a real database backend.
-    // FIXME: We changed this to singleton so it could cause problems with concurrent access. Not
-    // the end of the world as task are cooperative, and single threaded.
-    Vector<PrimitiveContent> db_;
-    u32                      nextResourceId_ = 1;
+    boolean initialized_    = false;
+    u64     nextResourceId_ = 1;
+
+    CString                   spId_;
+    zerom2m::sqlite::Database db_;
+
+    CString GetId();
 };
 
 } // namespace zerom2m::onem2m

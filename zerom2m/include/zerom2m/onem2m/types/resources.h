@@ -10,6 +10,7 @@
 #pragma once
 
 #include <zerom2m/compat/types.h>
+#include <zerom2m/onem2m/types/enums.h>
 
 namespace zerom2m::onem2m::types
 {
@@ -72,6 +73,9 @@ struct AE : ResourceBase {
     Vector<CString>   supportedReleaseVersions; // srv
     Optional<CString> e2eSecInfo;               // esi
     Optional<boolean> triggerEnable;            // tren
+
+    // internal
+    CString originator;
 };
 
 // Container (cnt), ty=3
@@ -122,7 +126,7 @@ struct Group : ResourceBase {
 
 // Subscription (sub), ty=23
 struct BatchNotify {
-    s32              number = 0;
+    s32               number = 0;
     Optional<CString> duration; // ISO8601 duration (dur)
 };
 
@@ -168,9 +172,9 @@ struct Subscription : ResourceBase {
     Optional<u8>                      notificationEventCat;        // nec
     Optional<CString>                 subscriberURI;               // su
     Optional<CString>                 creator;                     // cr
-    Optional<boolean>                 creatorProvided;             // internal flag: cr was explicitly provided (including null)
-    Optional<CString>                 groupName;                   // gn
-    Optional<CString>                 associatedCrossResourceSub;  // acrs
+    Optional<boolean> creatorProvided; // internal flag: cr was explicitly provided (including null)
+    Optional<CString> groupName;       // gn
+    Optional<CString> associatedCrossResourceSub; // acrs
 };
 
 // RemoteCSE (csr), ty=16

@@ -47,6 +47,7 @@ struct SystemConfig {
 
     struct {
         CString hostname;
+        bool clean_db_on_boot;
     } system;
 
     SystemConfig()
@@ -66,10 +67,11 @@ struct SystemConfig {
 
         cse.resource_name = "m2m";
         cse.resource_id   = "m2m";
-        cse.cse_id        = "/m2m";
+        cse.cse_id        = "m2m";
         cse.sp_id         = "zerom2m.example.com";
 
         system.hostname = "zerom2m";
+        system.clean_db_on_boot = false;
     }
 };
 

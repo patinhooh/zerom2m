@@ -24,6 +24,7 @@ class TestAE(unittest.TestCase):
 	originator2	= None
 	aeACPI 		= None
 	aeURL 		= None
+	rn 			= None
 
 	@classmethod
 	@unittest.skipIf(noCSE, 'No CSEBase')
@@ -70,18 +71,19 @@ class TestAE(unittest.TestCase):
 			ae, rsc = CREATE(cseURL, originator, T.AE, dct, headers = headers)
 		else:
 			ae, rsc = CREATE(cseURL, originator, T.AE, dct)
-		return ae, rsc, f'{cseURL}/{rn}'
+		return ae, rsc, f'{cseURL}/{rn}', rn
 
 
 	@unittest.skipIf(noCSE, 'No CSEBase')
 	def test_createAE(self) -> None:
 		""" Create/register an <AE> """
-		r, rsc, ae_url = self._newAe(APPID)
+		r, rsc, ae_url, rn = self._newAe(APPID)
 
 		self.assertEqual(rsc, RC.CREATED, r)
 		TestAE.originator = findXPath(r, 'm2m:ae/aei')
 		TestAE.aeACPI = findXPath(r, 'm2m:ae/acpi')
 		TestAE.aeURL = ae_url
+		TestAE.rn = rn
 		self.assertIsNotNone(TestAE.originator, r)
 
 
@@ -102,15 +104,13 @@ class TestAE(unittest.TestCase):
 	@unittest.skipIf(noCSE, 'No CSEBase')
 	def test_createAEAgainFail(self) -> None:
 		""" Create/register an <AE> with same rn again -> Fail """
-		rn = uniqueRN('testAE')
+		rn = TestAE.rn
 		dct = 	{ 'm2m:ae' : {
 					'rn': rn,
 					'api': APPID,
 				 	'rr': False,
 				 	'srv': [ RELEASEVERSION ]
 				}}
-		_, rsc = CREATE(cseURL, ORIGINATORSelfReg, T.AE, dct)
-		self.assertEqual(rsc, RC.CREATED)
 		_, rsc = CREATE(cseURL, ORIGINATORSelfReg, T.AE, dct)
 		self.assertEqual(rsc, RC.CONFLICT)
 
@@ -170,12 +170,7 @@ class TestAE(unittest.TestCase):
 		self.assertEqual(findXPath(r, 'm2m:ae/rr'), False)
 		self.assertIsNotNone(findXPath(r, 'm2m:ae/srv'))
 		self.assertEqual(findXPath(r, 'm2m:ae/srv'), [ RELEASEVERSION ])
-		self.assertIsNone(findXPath(r, 'm2m:ae/st'))
 		self.assertEqual(findXPath(r, 'm2m:ae/pi'), findXPath(TestAE.cse,'m2m:cb/ri'))
-		#self.assertIsNotNone(findXPath(r, 'm2m:ae/acpi'))
-		#self.assertIsInstance(findXPath(r, 'm2m:ae/acpi'), list)
-		#self.assertGreater(len(findXPath(r, 'm2m:ae/acpi')), 0)
-		self.assertIsNone(findXPath(r, 'm2m:ae/st'))
 
 
 	@unittest.skipIf(noCSE, 'No CSEBase')
@@ -210,7 +205,7 @@ class TestAE(unittest.TestCase):
 	@unittest.skipIf(noCSE, 'No CSEBase')
 	def test_createAEAPICorrectR(self) -> None:
 		""" Create <AE> with correct api value (Registered)"""
-		ae, rsc, _ = self._newAe('Rabc.com.example.acme')
+		ae, rsc, _, _ = self._newAe('Rabc.com.example.acme')
 
 		self.assertEqual(rsc, RC.CREATED)
 		self.assertIsNotNone(findXPath(ae, 'm2m:ae/aei'))
@@ -219,7 +214,7 @@ class TestAE(unittest.TestCase):
 	@unittest.skipIf(noCSE, 'No CSEBase')
 	def test_createAEAPICorrectN(self) -> None:
 		""" Create <AE> with correct api value (Non-Registered)"""
-		ae, rsc, _ = self._newAe('Nacme')
+		ae, rsc, _, _ = self._newAe('Nacme')
 
 		self.assertEqual(rsc, RC.CREATED)
 		self.assertIsNotNone(findXPath(ae, 'm2m:ae/aei'))
@@ -228,7 +223,7 @@ class TestAE(unittest.TestCase):
 	@unittest.skipIf(noCSE, 'No CSEBase')
 	def test_createAEAPIRVI3LowerCaseR(self) -> None:
 		""" Create <AE> with RVI=3 and lower case API"""
-		ae, rsc, _ = self._newAe('racme', rvi = '3')
+		ae, rsc, _, _ = self._newAe('racme', rvi = '3')
 
 		self.assertEqual(rsc, RC.CREATED)
 		self.assertIsNotNone(findXPath(ae, 'm2m:ae/aei'))

@@ -14,6 +14,7 @@
 #include <zerom2m/onem2m/onem2m_service.h>
 #include <zerom2m/onem2m/types/enums.h>
 #include <zerom2m/onem2m/types/short_names.h>
+#include <zerom2m/onem2m/utils.h>
 #include <zerom2m/serde/serde.h>
 
 #include <circle/logger.h>
@@ -29,13 +30,17 @@ using zerom2m::serde::SerDe;
 HttpResponse HttpAdapter::HandleRequest(const HttpRequest &req)
 {
     CString path = StringViewToCString(req.Path);
-    CLogger::Get()->Write(
-        "http_adapter", LogNotice, "HTTP request method=%d path=%s bodyLength=%d", (int)req.Method, path.c_str(), (int)req.BodyLength);
+    CLogger::Get()->Write("http_adapter",
+                          LogNotice,
+                          "HTTP request method=%d path=%s bodyLength=%d",
+                          (int)req.Method,
+                          path.c_str(),
+                          (int)req.BodyLength);
 
     RequestPrimitive prim = decodeRequest(req);
 
     CString errMsg;
-    if (!isValid(prim, errMsg)) {
+    if (!isValidRequest(prim, errMsg)) {
         CLogger::Get()->Write("http_adapter", LogWarning, "Invalid primitive: %s", errMsg.c_str());
         ResponsePrimitive errResp = makeResponse(prim, ResponseStatusCode::BAD_REQUEST);
         return encodeResponse(errResp, mime::JSON);

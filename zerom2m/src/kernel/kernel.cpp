@@ -13,6 +13,7 @@
 #include <zerom2m/config/config_parser.h>
 #include <zerom2m/kernel/kernel.h>
 #include <zerom2m/kernel/network_manager.h>
+#include <zerom2m/sqlite/sqlite_vfs.h>
 
 namespace zerom2m::kernel
 {
@@ -84,6 +85,12 @@ bool Kernel::Initialize()
             FromKernel, LogWarning, "Could not load " CONFIG_PATH ", using defaults");
     } else {
         parser.DumpConfig();
+    }
+
+    if (ok) {
+        ok = RegisterCircleVfs();
+        if (ok) CLogger::Get()->Write(FromKernel, LogNotice, "Circle VFS registered successfully");
+        else CLogger::Get()->Write(FromKernel, LogError, "Failed to register Circle VFS");
     }
 
     // Network init is fully delegated to NetworkManager
