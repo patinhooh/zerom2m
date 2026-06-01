@@ -36,6 +36,18 @@ public:
     // Load by target: matches ri, rn or pi/rn. Target is normalized (no leading '/').
     bool LoadPrimitiveContentByTarget(const CString &target, PrimitiveContent &out, CString &err);
 
+    // Load direct children of a resource identified by target (ri, rn or pi/rn).
+    bool LoadPrimitiveContentChildren(const CString &target, 
+                                PrimitiveContentKind childrenKind,
+                                zerom2m::compat::Vector<CString> &out,
+                                CString &err);
+
+    // Load the latest child (by ct) of a resource identified by target (ri, rn or pi/rn).
+    bool LoadLatestChild(const CString &target,
+                     PrimitiveContentKind childrenKind,
+                     CString &outRi,
+                     CString &err);
+
     // Get first CSEBase (if any)
     bool GetCSEBase(CSEBase &out, CString &err);
     bool ExistsAEByAEID(const CString &aeid, CString &err);
