@@ -744,3 +744,145 @@ bool Database::ExistsAEByAEID(const CString &aeid, CString &err)
     sqlite3_finalize(s);
     return exists;
 }
+
+// Returns the resource IDs of all direct children of the resource identified
+// by `target` (resolved by ri, rn, or pi/rn — same rules as
+// LoadPrimitiveContentByTarget).
+//
+// If `childrenKind` is PrimitiveContentKind::None the filter is omitted and
+// all child types are returned.  Otherwise only children whose `ty` column
+// matches the given kind are included.
+//
+// On success returns true and populates `out` with the `ri` values; the
+// caller can pass each entry to LoadPrimitiveContentByTarget to get the full
+// resource.  Returns false (with `err` set) only on a hard DB error; an
+// empty result set is not an error.
+bool Database::LoadPrimitiveContentChildren(const CString &target,
+                                            PrimitiveContentKind childrenKind,
+                                            zerom2m::compat::Vector<CString> &out,
+                                            CString &err)
+{
+    if (!db_) { err = "DB not open"; return false; }
+ 
+    out.clear();
+ 
+    // Step 1: resolve the parent ri from the target string.
+    // We reuse the same three-way match used by LoadPrimitiveContentByTarget.
+    const char *resolveSql =
+        "SELECT ri FROM resources "
+        "WHERE ri = ? OR rn = ? OR (pi || '/' || rn) = ? "
+        "LIMIT 1;";
+ 
+    sqlite3_stmt *resolveStmt = nullptr;
+    int rc = sqlite3_prepare_v2(db_, resolveSql, -1, &resolveStmt, nullptr);
+    if (rc != SQLITE_OK) { err = CString(sqlite3_errmsg(db_)); return false; }
+ 
+    sqlite3_bind_text(resolveStmt, 1, target.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(resolveStmt, 2, target.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(resolveStmt, 3, target.c_str(), -1, SQLITE_TRANSIENT);
+ 
+    rc = sqlite3_step(resolveStmt);
+    if (rc != SQLITE_ROW) {
+        sqlite3_finalize(resolveStmt);
+        err = "parent not found";
+        return false;
+    }
+ 
+    CString parentRi = CString(reinterpret_cast<const char *>(sqlite3_column_text(resolveStmt, 0)));
+    sqlite3_finalize(resolveStmt);
+ 
+    // Step 2: fetch children.
+    // With kind filter:    SELECT ri FROM resources WHERE pi = ? AND ty = ?
+    // Without kind filter: SELECT ri FROM resources WHERE pi = ?
+    sqlite3_stmt *childStmt = nullptr;
+ 
+    if (childrenKind == PrimitiveContentKind::None) {
+        const char *sql = "SELECT ri FROM resources WHERE pi = ?;";
+        rc = sqlite3_prepare_v2(db_, sql, -1, &childStmt, nullptr);
+        if (rc != SQLITE_OK) { err = CString(sqlite3_errmsg(db_)); return false; }
+        sqlite3_bind_text(childStmt, 1, parentRi.c_str(), -1, SQLITE_TRANSIENT);
+    } else {
+        const char *sql = "SELECT ri FROM resources WHERE pi = ? AND ty = ?;";
+        rc = sqlite3_prepare_v2(db_, sql, -1, &childStmt, nullptr);
+        if (rc != SQLITE_OK) { err = CString(sqlite3_errmsg(db_)); return false; }
+        sqlite3_bind_text(childStmt, 1, parentRi.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int (childStmt, 2, static_cast<int>(childrenKind));
+    }
+ 
+    while ((rc = sqlite3_step(childStmt)) == SQLITE_ROW) {
+        const char *riText = reinterpret_cast<const char *>(sqlite3_column_text(childStmt, 0));
+        if (riText) out.push_back(CString(riText));
+    }
+ 
+    sqlite3_finalize(childStmt);
+ 
+    if (rc != SQLITE_DONE) {
+        err = CString(sqlite3_errmsg(db_));
+        return false;
+    }
+ 
+    return true;
+}
+
+
+// Returns the ri of the most recently inserted child of `target` with the
+// given `childrenKind`.  Useful for fetching the latest ContentInstance of a
+// Container, for example.
+//
+// Returns true and sets `outRi` on success, false (with `err`) if the parent
+// is not found or no matching child exists.
+bool Database::LoadLatestChild(const CString &target,
+                               PrimitiveContentKind childrenKind,
+                               CString &outRi,
+                               CString &err)
+{
+    if (!db_) { err = "DB not open"; return false; }
+ 
+    // Resolve parent ri (same three-way match as everywhere else)
+    const char *resolveSql =
+        "SELECT ri FROM resources "
+        "WHERE ri = ? OR rn = ? OR (pi || '/' || rn) = ? "
+        "LIMIT 1;";
+ 
+    sqlite3_stmt *resolveStmt = nullptr;
+    int rc = sqlite3_prepare_v2(db_, resolveSql, -1, &resolveStmt, nullptr);
+    if (rc != SQLITE_OK) { err = CString(sqlite3_errmsg(db_)); return false; }
+ 
+    sqlite3_bind_text(resolveStmt, 1, target.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(resolveStmt, 2, target.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(resolveStmt, 3, target.c_str(), -1, SQLITE_TRANSIENT);
+ 
+    rc = sqlite3_step(resolveStmt);
+    if (rc != SQLITE_ROW) {
+        sqlite3_finalize(resolveStmt);
+        err = "parent not found";
+        return false;
+    }
+ 
+    CString parentRi = CString(reinterpret_cast<const char *>(sqlite3_column_text(resolveStmt, 0)));
+    sqlite3_finalize(resolveStmt);
+ 
+    // Fetch the most recently inserted child of the requested type
+    const char *sql =
+        "SELECT ri FROM resources WHERE pi = ? AND ty = ? ORDER BY rowid DESC LIMIT 1;";
+ 
+    sqlite3_stmt *stmt = nullptr;
+    rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) { err = CString(sqlite3_errmsg(db_)); return false; }
+ 
+    sqlite3_bind_text(stmt, 1, parentRi.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int (stmt, 2, static_cast<int>(childrenKind));
+ 
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW) {
+        sqlite3_finalize(stmt);
+        err = "no child of that type found";
+        return false;
+    }
+ 
+    outRi = CString(reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0)));
+    sqlite3_finalize(stmt);
+    return true;
+}
+ 
+ 
