@@ -1018,6 +1018,7 @@ ResponsePrimitive OneM2MService::CreateContentInstance(const ContentInstance  &c
                                                        const RequestPrimitive &req,
                                                        const CString          &target)
 {
+    // TODO: Using DB
     ContentInstance  r = cin;
     PrimitiveContent parent;
     CString          lookupErr;
@@ -1087,6 +1088,9 @@ ResponsePrimitive OneM2MService::CreateContentInstance(const ContentInstance  &c
 
     // Ensure contentSize is set (codec may have estimated it)
     if (r.contentSize <= 0) { r.contentSize = static_cast<s64>(r.content.GetLength()); }
+
+    // FIXME: me remove this
+    return ResponsePrimitive();
 
     // Policy checks against parent Container (mbs, mni) and potential eviction.
 
@@ -1328,6 +1332,7 @@ ResponsePrimitive OneM2MService::CreateSubscription(const Subscription     &sub,
                                                     const RequestPrimitive &req,
                                                     const CString          &target)
 {
+    // TODO: Using DB
     (void)sub;
     (void)req;
     (void)target;
