@@ -536,10 +536,13 @@ bool MatchesResourceTarget(Database &db, const ResourceBase &resource, const CSt
                               loadErr.c_str());
         return false;
     }
+    CString laPath     = BuildResourcePath(fullPath, "la");
+    CString olPath     = BuildResourcePath(fullPath, "ol");
     CString normalized = NormalizePath(target);
     return fullPath.Compare(target) == 0 || NormalizePath(fullPath).Compare(normalized) == 0 ||
            resource.resourceID.Compare(normalized) == 0 ||
-           resource.resourceName.Compare(normalized) == 0;
+           resource.resourceName.Compare(normalized) == 0 || laPath.Compare(target) == 0 ||
+           olPath.Compare(target) == 0;
 }
 
 bool IsAllowedForContainer(const RequestPrimitive &request, Database &db, const Container &cnt)
@@ -1090,12 +1093,46 @@ ResponsePrimitive OneM2MService::CreateContentInstance(const ContentInstance  &c
     if (r.contentSize <= 0) { r.contentSize = static_cast<s64>(r.content.GetLength()); }
 
     // Enforce max byte size per container, reject if new CIN cannot fit
-    if (cnt->maxByteSize.has_value()) {
-        s64 mbs          = *cnt->maxByteSize;
-        s64 currentBytes = cnt->currentByteSize;
+    if (cnt->maxByteSize.has_value() && cnt->maxByteSize.value() != 0) {
+        s64 mbs = *cnt->maxByteSize;
+        // XXX: As we have no updates or deletes, the current byte size is just the sum of existing
+        // CIN content sizes.
+
+        s64     currentBytes;
+        CString err;
+        if (!db_.GetContainerCurrentSize(cnt->resourceID, currentBytes, err)) {
+            CLogger::Get()->Write("onem2m_service",
+                                  LogError,
+                                  "Failed to get current size for container '%s': %s",
+                                  cnt->resourceID.c_str(),
+                                  err.c_str());
+            ResponsePrimitive resp;
+            resp.responseStatusCode = ResponseStatusCode::INTERNAL_SERVER_ERROR;
+            return resp;
+        }
+
+        s64             currentNrOfInstances = 0;
+        Vector<CString> cinRIs;
+        if (db_.LoadPrimitiveContentChildren(
+                r.resourceID, ResourceType::ContentInstance, cinRIs, err)) {
+            currentNrOfInstances = cinRIs.GetCount();
+        }
+
+        if (cnt->maxNrOfInstances.has_value() && cnt->maxNrOfInstances.value() != 0 &&
+            currentNrOfInstances > cnt->maxNrOfInstances.value()) {
+            CLogger::Get()->Write("onem2m_service",
+                                  LogNotice,
+                                  "Container '%s' has reached max number of instances: %d",
+                                  cnt->resourceID.c_str(),
+                                  currentNrOfInstances);
+            ResponsePrimitive resp;
+            resp.responseStatusCode = ResponseStatusCode::NOT_ACCEPTABLE;
+            return resp;
+        }
 
         // XXX: This should just delete old CINs but delete is out of scope.
-        if (currentBytes + r.contentSize > mbs) {
+
+        if (mbs != 0 && currentBytes + r.contentSize > mbs) {
             ResponsePrimitive bad;
             bad.responseStatusCode = ResponseStatusCode::NOT_ACCEPTABLE;
             return bad;
@@ -1103,20 +1140,19 @@ ResponsePrimitive OneM2MService::CreateContentInstance(const ContentInstance  &c
     }
 
     // Enforce max number of instances (evict oldest if necessary)
-    if (cnt->maxNrOfInstances.has_value()) {
+    if (cnt->maxNrOfInstances.has_value() && cnt->maxNrOfInstances.value() != 0) {
         s64 desired = *cnt->maxNrOfInstances;
 
-        // XXX: Has we have no updates or deletes, the current number of instances is just the count
-        // of existing CINs.
-        // s64 current = cnt->currentNrOfInstances;
+        // XXX: Has we have no updates or deletes, the current number of instances is just the
+        // count of existing CINs. s64 current = cnt->currentNrOfInstances;
         Vector<CString> cinRIs;
         CString         err;
         db_.LoadPrimitiveContentChildren(
-            cnt->resourceID, PrimitiveContentKind::ContentInstance, cinRIs, err);
+            cnt->resourceID, ResourceType::ContentInstance, cinRIs, err);
 
         if (cinRIs.GetCount() + 1 > desired) {
-            // XXX: This should just delete old CINs until we are under the limit, but delete is out
-            // of scope. For now just reject if we would exceed the limit.
+            // XXX: This should just delete old CINs until we are under the limit, but delete is
+            // out of scope. For now just reject if we would exceed the limit.
             ResponsePrimitive bad;
             bad.responseStatusCode = ResponseStatusCode::NOT_ACCEPTABLE;
             return bad;
@@ -1214,7 +1250,8 @@ ResponsePrimitive OneM2MService::CreateSubscription(const Subscription     &sub,
     // if (request.vendorInformation.has_value()) {
     //     if (request.vendorInformation->Compare("sub_creator_present") == 0) {
     //         CLogger::Get()->Write(
-    //             "onem2m_service", LogNotice, "Create Subscription request with invalid creator");
+    //             "onem2m_service", LogNotice, "Create Subscription request with invalid
+    //             creator");
     //         resp.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
     //         return resp;
     //     }
@@ -1235,7 +1272,8 @@ ResponsePrimitive OneM2MService::CreateSubscription(const Subscription     &sub,
     // // If the request did not explicitly include a `cr` attribute, set the
     // // subscription creator to the originator so later retrieval/authorization
     // // checks succeed (matches prior behaviour).
-    // if (!r.creator.has_value() && request.from.GetLength() != 0) { r.creator = request.from; }
+    // if (!r.creator.has_value() && request.from.GetLength() != 0) { r.creator = request.from;
+    // }
 
     // if (nctProvided && r.notificationContentType.has_value() &&
     //     *r.notificationContentType == NotificationContentType::ModifiedAttributes &&
@@ -1250,8 +1288,8 @@ ResponsePrimitive OneM2MService::CreateSubscription(const Subscription     &sub,
     // // but reject subscriptions that request `BlockingUpdate` together with
     // // any other notification event type without an explicit `nct`.
     // if (!nctProvided) {
-    //     bool hasBlocking = ContainsNotificationEvent(r, NotificationEventType::BlockingUpdate);
-    //     if (hasBlocking) {
+    //     bool hasBlocking = ContainsNotificationEvent(r,
+    //     NotificationEventType::BlockingUpdate); if (hasBlocking) {
     //         size_t evtCount = r.eventNotificationCriteria.notificationEventType.size();
     //         if (evtCount > 1) {
     //             resp.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
@@ -1276,7 +1314,8 @@ ResponsePrimitive OneM2MService::CreateSubscription(const Subscription     &sub,
     //     // for blocking-update subscriptions.
     //     const EventNotificationCriteria &enc = r.eventNotificationCriteria;
     //     if (enc.stateTagBigger.has_value() || enc.expireBefore.has_value() ||
-    //         enc.expireAfter.has_value() || enc.sizeAbove.has_value() || enc.sizeBelow.has_value()
+    //         enc.expireAfter.has_value() || enc.sizeAbove.has_value() ||
+    //         enc.sizeBelow.has_value()
     //         || enc.labels.size() > 0 || enc.childResourceType.size() > 0 ||
     //         enc.filterUsage.has_value() || enc.contentFilterQuery.has_value() ||
     //         enc.contentFilterSyntax.has_value() || enc.missingData.has_value()) {
@@ -1343,15 +1382,7 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
         return resp;
     }
 
-    CString cseRoot;
-    cseRoot.Format("/%s", cse.resourceName.c_str());
-    CLogger::Get()->Write("onem2m_service",
-                          LogDebug,
-                          "Retrieve: cseRoot='%s', rn='%s', target='%s'",
-                          cseRoot.c_str(),
-                          cse.resourceName.c_str(),
-                          target.c_str());
-    const boolean isCseTarget = target.Compare(cseRoot) == 0;
+    const boolean isCseTarget = target.Compare(cse.resourceName) == 0;
 
     PrimitiveContent found;
     CString          loadErr;
@@ -1361,7 +1392,21 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
         // lookup by target path
         CLogger::Get()->Write(
             "onem2m_service", LogDebug, "Retrieve: looking up target='%s' in DB", target.c_str());
-        if (!db_.LoadPrimitiveContentByTarget(target, found, loadErr)) {
+        // check if ends with /la or /ol
+        CString parentTarget = target;
+        if (target.c_str()[target.GetLength() - 3] == '/') {
+            char *tmp = new char[target.GetLength() + 1];
+            memcpy(tmp, target.c_str(), target.GetLength() + 1);
+            tmp[target.GetLength() - 3] = '\0';
+            parentTarget                = CString(tmp);
+            delete[] tmp;
+            CLogger::Get()->Write("onem2m_service",
+                                  LogDebug,
+                                  "Retrieve: parent target='%s' derived from target='%s'",
+                                  parentTarget.c_str(),
+                                  target.c_str());
+        }
+        if (!db_.LoadPrimitiveContentByTarget(parentTarget, found, loadErr)) {
 
             CLogger::Get()->Write("onem2m_service", LogDebug, "target:'%s'", target.c_str());
             resp.responseStatusCode = ResponseStatusCode::NOT_FOUND;
@@ -1413,9 +1458,8 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
     return resp;
 }
 
-ResponsePrimitive OneM2MService::RetrieveCSE(const RequestPrimitive &req,
-                                             const CSEBase          &cse,
-                                             const CString          &target)
+ResponsePrimitive
+OneM2MService::RetrieveCSE(const RequestPrimitive &req, const CSEBase &cse, const CString &target)
 {
     ResponsePrimitive resp;
     CString           cseRoot;
@@ -1446,13 +1490,9 @@ OneM2MService::RetrieveAE(const RequestPrimitive &req, const AE &ae, const CStri
         resp.responseStatusCode = ResponseStatusCode::NOT_FOUND;
         return resp;
     }
-    if (req.from.GetLength() == 0 || ae.aeID.GetLength() == 0 ||
-        req.from.Compare(ae.aeID) != 0) {
-        CLogger::Get()->Write("onem2m_service",
-                              LogNotice,
-                              "from='%s' aeID='%s'",
-                              req.from.c_str(),
-                              ae.aeID.c_str());
+    if (req.from.GetLength() == 0 || ae.aeID.GetLength() == 0 || req.from.Compare(ae.aeID) != 0) {
+        CLogger::Get()->Write(
+            "onem2m_service", LogNotice, "from='%s' aeID='%s'", req.from.c_str(), ae.aeID.c_str());
         resp.responseStatusCode = ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
         return resp;
     }
@@ -1463,28 +1503,29 @@ OneM2MService::RetrieveAE(const RequestPrimitive &req, const AE &ae, const CStri
 }
 
 ResponsePrimitive OneM2MService::RetrieveContainer(const RequestPrimitive &req,
-                                                   const Container        &con,
+                                                   const Container        &cnt,
                                                    const CString          &target)
 {
     ResponsePrimitive resp;
+    Container         r = cnt;
 
-    if (!MatchesResourceTarget(db_, con, target)) {
+    if (!MatchesResourceTarget(db_, cnt, target)) {
         resp.responseStatusCode = ResponseStatusCode::NOT_FOUND;
         return resp;
     }
 
-    if (!IsAllowedForContainer(req, db_, con)) {
+    if (!IsAllowedForContainer(req, db_, cnt)) {
         resp.responseStatusCode = ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
         return resp;
     }
 
     CString fullPath;
     CString loadErr;
-    if (!db_.GetPathByRI(con.resourceID, fullPath, loadErr)) {
+    if (!db_.GetPathByRI(cnt.resourceID, fullPath, loadErr)) {
         CLogger::Get()->Write("onem2m_service",
                               LogError,
                               "Failed to get path for container '%s': %s",
-                              con.resourceID.c_str(),
+                              cnt.resourceID.c_str(),
                               loadErr.c_str());
         resp.responseStatusCode = ResponseStatusCode::NOT_FOUND;
         return resp;
@@ -1494,17 +1535,87 @@ ResponsePrimitive OneM2MService::RetrieveContainer(const RequestPrimitive &req,
     CString olPath = fullPath;
     olPath += "/ol";
 
-    if (laPath.Compare(target) == 0 || olPath.Compare(target) == 0) {
-        if (con.disableRetrieval.has_value() && *con.disableRetrieval) {
-            resp.responseStatusCode = ResponseStatusCode::OPERATION_NOT_ALLOWED;
-            return resp;
-        }
-        resp.responseStatusCode = ResponseStatusCode::NOT_IMPLEMENTED;
+    // FIXME: check if this should be here
+    if (cnt.disableRetrieval.has_value() && *cnt.disableRetrieval) {
+        resp.responseStatusCode = ResponseStatusCode::OPERATION_NOT_ALLOWED;
         return resp;
     }
 
+    // Return instance if target ends with /la or /ol
+    if (laPath.Compare(target) == 0 || olPath.Compare(target) == 0) {
+        CString cinRI;
+        if (laPath.Compare(target) == 0 &&
+            !db_.LoadLatestChild(cnt.resourceID, ResourceType::ContentInstance, cinRI, loadErr)) {
+            CLogger::Get()->Write("onem2m_service",
+                                  LogError,
+                                  "Failed to load latest child for container '%s': %s",
+                                  cnt.resourceID.c_str(),
+                                  loadErr.c_str());
+            resp.responseStatusCode = ResponseStatusCode::NOT_FOUND;
+            return resp;
+        } else if (olPath.Compare(target) == 0 &&
+                   !db_.LoadOldestChild(
+                       cnt.resourceID, ResourceType::ContentInstance, cinRI, loadErr)) {
+            CLogger::Get()->Write("onem2m_service",
+                                  LogError,
+                                  "Failed to load oldest child for container '%s': %s",
+                                  cnt.resourceID.c_str(),
+                                  loadErr.c_str());
+            resp.responseStatusCode = ResponseStatusCode::NOT_FOUND;
+            return resp;
+        }
+        PrimitiveContent cinPc;
+        if (!db_.LoadPrimitiveContentByTarget(cinRI, cinPc, loadErr)) {
+            CLogger::Get()->Write("onem2m_service",
+                                  LogError,
+                                  "Failed to load content instance for container '%s': %s",
+                                  cnt.resourceID.c_str(),
+                                  loadErr.c_str());
+            resp.responseStatusCode = ResponseStatusCode::NOT_FOUND;
+            return resp;
+        }
+        return RetrieveContentInstance(req, *cinPc.GetIf<ContentInstance>(), cinRI);
+    }
+
+    // XXX: This should be saved on CIN creation and deletion, but update and delete is out of
+    // scope
+    r.currentNrOfInstances = 0;
+    r.currentByteSize      = 0;
+    Vector<CString> cinRIs;
+    CString         err;
+    CLogger::Get()->Write(
+        "onem2m_service",
+        LogDebug,
+        "Loading children of container '%s' to calculate current number of instances and "
+        "current byte size",
+        cnt.resourceID.c_str());
+
+    if (!db_.GetContainerCurrentSize(r.resourceID, r.currentByteSize, err)) {
+        CLogger::Get()->Write("onem2m_service",
+                                LogError,
+                                "Failed to get current size for container '%s': %s",
+                                r.resourceID.c_str(),
+                                err.c_str());
+        ResponsePrimitive resp;
+        resp.responseStatusCode = ResponseStatusCode::INTERNAL_SERVER_ERROR;
+        return resp;
+    }
+
+    if (db_.LoadPrimitiveContentChildren(
+            r.resourceID, ResourceType::ContentInstance, cinRIs, err)) {
+        r.currentNrOfInstances = cinRIs.GetCount();
+    }
+
+
+    CLogger::Get()->Write("onem2m_service",
+                            LogDebug,
+                            "Container '%s' has %d content instances with total byte size %d",
+                            cnt.resourceID.c_str(),
+                            r.currentNrOfInstances,
+                            r.currentByteSize);
+
     PrimitiveContent out;
-    out = con;
+    out = r;
     return makeResponse(req, ResponseStatusCode::OK, out);
 }
 
@@ -1553,7 +1664,6 @@ ResponsePrimitive OneM2MService::RetrieveContentInstance(const RequestPrimitive 
         resp.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
         return resp;
     }
-
 
     // XXX: we do not support policy-based access control
     if (!cin.accessControlPolicyIDs.empty()) {

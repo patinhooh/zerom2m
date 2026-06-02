@@ -132,6 +132,9 @@ enum class ResourceType : u32 {
     // Service subscriptions
     ServiceSubscribedUserProfile = 4018,
     SoftwareCampaign             = 4019,
+
+    // Internal
+    None = 0,
 };
 
 struct ResourceTypeName {

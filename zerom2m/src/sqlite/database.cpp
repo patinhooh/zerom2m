@@ -894,10 +894,10 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
 // caller can pass each entry to LoadPrimitiveContentByTarget to get the full
 // resource.  Returns false (with `err` set) only on a hard DB error; an
 // empty result set is not an error.
-bool Database::LoadPrimitiveContentChildren(const CString       &target,
-                                            PrimitiveContentKind childrenKind,
-                                            Vector<CString>     &out,
-                                            CString             &err)
+bool Database::LoadPrimitiveContentChildren(const CString   &target,
+                                            ResourceType     childrenType,
+                                            Vector<CString> &out,
+                                            CString         &err)
 {
     if (!db_) {
         err = "DB not open";
@@ -938,7 +938,7 @@ bool Database::LoadPrimitiveContentChildren(const CString       &target,
     // Without kind filter: SELECT ri FROM resources WHERE pi = ?
     sqlite3_stmt *childStmt = nullptr;
 
-    if (childrenKind == PrimitiveContentKind::None) {
+    if (childrenType == ResourceType::None) {
         const char *sql = "SELECT ri FROM resources WHERE pi = ?;";
         rc              = sqlite3_prepare_v2(db_, sql, -1, &childStmt, nullptr);
         if (rc != SQLITE_OK) {
@@ -954,7 +954,7 @@ bool Database::LoadPrimitiveContentChildren(const CString       &target,
             return false;
         }
         sqlite3_bind_text(childStmt, 1, parentRi.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(childStmt, 2, static_cast<int>(childrenKind));
+        sqlite3_bind_int(childStmt, 2, static_cast<u32>(childrenType));
     }
 
     while ((rc = sqlite3_step(childStmt)) == SQLITE_ROW) {
@@ -978,10 +978,10 @@ bool Database::LoadPrimitiveContentChildren(const CString       &target,
 //
 // Returns true and sets `outRi` on success, false (with `err`) if the parent
 // is not found or no matching child exists.
-bool Database::LoadLatestChild(const CString       &target,
-                               PrimitiveContentKind childrenKind,
-                               CString             &outRi,
-                               CString             &err)
+bool Database::LoadLatestChild(const CString &target,
+                               ResourceType   childrenType,
+                               CString       &outRi,
+                               CString       &err)
 {
     if (!db_) {
         err = "DB not open";
@@ -1026,7 +1026,69 @@ bool Database::LoadLatestChild(const CString       &target,
     }
 
     sqlite3_bind_text(stmt, 1, parentRi.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int(stmt, 2, static_cast<int>(childrenKind));
+    sqlite3_bind_int(stmt, 2, static_cast<int>(childrenType));
+
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW) {
+        sqlite3_finalize(stmt);
+        err = "no child of that type found";
+        return false;
+    }
+
+    outRi = CString(reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0)));
+    sqlite3_finalize(stmt);
+    return true;
+}
+
+bool Database::LoadOldestChild(const CString &target,
+                               ResourceType   childrenType,
+                               CString       &outRi,
+                               CString       &err)
+{
+    if (!db_) {
+        err = "DB not open";
+        return false;
+    }
+
+    // Resolve parent ri (same three-way match as everywhere else)
+    const char *resolveSql = "SELECT ri FROM resources "
+                             "WHERE ri = ? OR rn = ? OR path = ? "
+                             "LIMIT 1;";
+
+    sqlite3_stmt *resolveStmt = nullptr;
+    int           rc          = sqlite3_prepare_v2(db_, resolveSql, -1, &resolveStmt, nullptr);
+    if (rc != SQLITE_OK) {
+        err = CString(sqlite3_errmsg(db_));
+        return false;
+    }
+
+    sqlite3_bind_text(resolveStmt, 1, target.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(resolveStmt, 2, target.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(resolveStmt, 3, target.c_str(), -1, SQLITE_TRANSIENT);
+
+    rc = sqlite3_step(resolveStmt);
+    if (rc != SQLITE_ROW) {
+        sqlite3_finalize(resolveStmt);
+        err = "parent not found";
+        return false;
+    }
+
+    CString parentRi = CString(reinterpret_cast<const char *>(sqlite3_column_text(resolveStmt, 0)));
+    sqlite3_finalize(resolveStmt);
+
+    // Fetch the most recently inserted child of the requested type
+    const char *sql =
+        "SELECT ri FROM resources WHERE pi = ? AND ty = ? ORDER BY rowid ASC LIMIT 1;";
+
+    sqlite3_stmt *stmt = nullptr;
+    rc                 = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        err = CString(sqlite3_errmsg(db_));
+        return false;
+    }
+
+    sqlite3_bind_text(stmt, 1, parentRi.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 2, static_cast<int>(childrenType));
 
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_ROW) {
@@ -1065,6 +1127,31 @@ bool Database::GetPathByRI(const CString &ri, CString &out, CString &err)
     rc = sqlite3_step(s);
     if (rc == SQLITE_ROW) {
         out = column_text_or_empty(s, 0);
+        sqlite3_finalize(s);
+        return true;
+    }
+    sqlite3_finalize(s);
+    err = "not found";
+    return false;
+}
+
+bool Database::GetContainerCurrentSize(const CString &ri, s64 &out, CString &err)
+{
+    const char   *q  = "SELECT SUM(c.cs) "
+                       "FROM resources r "
+                       "JOIN content_instance c ON r.ri = c.ri "
+                       "WHERE r.pi = ? AND r.ty = ?;";
+    sqlite3_stmt *s  = nullptr;
+    int           rc = sqlite3_prepare_v2(db_, q, -1, &s, nullptr);
+    if (rc != SQLITE_OK) {
+        err = CString(sqlite3_errmsg(db_));
+        return false;
+    }
+    sqlite3_bind_text(s, 1, ri.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(s, 2, static_cast<int>(ResourceType::ContentInstance));
+    rc = sqlite3_step(s);
+    if (rc == SQLITE_ROW) {
+        out = sqlite3_column_int64(s, 0);
         sqlite3_finalize(s);
         return true;
     }
