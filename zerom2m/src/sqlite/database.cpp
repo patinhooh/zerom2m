@@ -35,6 +35,20 @@ static const char *kCreateResources = "CREATE TABLE IF NOT EXISTS resources ("
                                       "path TEXT" // EXTRA column for efficient lookup
                                       ");";
 
+static const char *kCreateCSE =
+    "CREATE TABLE IF NOT EXISTS cse ("
+    "ri  TEXT PRIMARY KEY,"
+    "cst INTEGER,"   // cseType
+    "csi TEXT,"      // cseID
+    "srt TEXT,"      // supportedResourceType (packed list of integers)
+    "srv TEXT,"      // supportedReleaseVersions (packed list)
+    "ctm TEXT,"      // currentTime
+    "poa TEXT,"      // pointOfAccess (packed list)
+    "ncp TEXT,"      // notifCongestionPolicy
+    "nl  TEXT,"      // nodeLink
+    "esi TEXT"       // e2eSecInfo
+    ");";
+
 static const char *kCreateAE =
     "CREATE TABLE IF NOT EXISTS ae (ri TEXT PRIMARY KEY, api TEXT, aei TEXT, apn TEXT, poa TEXT, "
     "ontologyRef TEXT, nl TEXT, csz TEXT, regs INTEGER, rr INTEGER, mei TEXT, tri TEXT, trn "
@@ -117,6 +131,12 @@ bool Database::InitSchema()
     rc = sqlite3_exec(db_, kCreateResources, nullptr, nullptr, &zErr);
     if (rc != SQLITE_OK) {
         CLogger::Get()->Write("database", LogError, "Failed to create resources table: %s", zErr);
+        sqlite3_free(zErr);
+        return false;
+    }
+    rc = sqlite3_exec(db_, kCreateCSE, nullptr, nullptr, &zErr);
+    if (rc != SQLITE_OK) {
+        CLogger::Get()->Write("database", LogError, "Failed to create cse table: %s", zErr);
         sqlite3_free(zErr);
         return false;
     }
@@ -360,16 +380,41 @@ bool Database::SaveCSE(const CSEBase &cse, CString &err)
         return false;
     }
     if (!InsertResources(cse, err)) return false;
-    const char   *sql  = "INSERT OR REPLACE INTO ae (ri, api, aei) VALUES (?,?,?);";
+ 
+    const char *sql =
+        "INSERT OR REPLACE INTO cse (ri, cst, csi, srt, srv, ctm, poa, ncp, nl, esi) VALUES (?,?,?,?,?,?,?,?,?,?);";
     sqlite3_stmt *stmt = nullptr;
     int           rc   = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
         err = CString(sqlite3_errmsg(db_));
         return false;
     }
+ 
     bind_text_or_null(stmt, 1, cse.resourceID);
-    bind_text_or_null(stmt, 2, CString());
+    sqlite3_bind_int(stmt, 2, static_cast<int>(cse.cseType));
     bind_text_or_null(stmt, 3, cse.cseID);
+ 
+    // supportedResourceType: pack as integers separated by 0x1F
+    {
+        zerom2m::compat::Vector<CString> srtStrs;
+        for (unsigned i = 0; i < cse.supportedResourceType.GetCount(); ++i) {
+            CString s;
+            s.Format("%d", static_cast<int>(cse.supportedResourceType[i]));
+            srtStrs.push_back(s);
+        }
+        CString srt = VecToPacked(srtStrs);
+        bind_text_or_null(stmt, 4, srt);
+    }
+ 
+    CString srv = VecToPacked(cse.supportedReleaseVersions);
+    bind_text_or_null(stmt, 5, srv);
+    bind_text_or_null(stmt, 6, cse.currentTime);
+    CString poa = VecToPacked(cse.pointOfAccess);
+    bind_text_or_null(stmt, 7, poa);
+    bind_text_or_null(stmt, 8, cse.notifCongestionPolicy);
+    bind_text_or_null(stmt, 9, cse.nodeLink);
+    bind_text_or_null(stmt, 10, cse.e2eSecInfo);
+ 
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
@@ -838,8 +883,7 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
             return false;
         }
         case ResourceType::CSEBase: {
-            // stored in ae table as minimal entry in Save; read back
-            const char   *q   = "SELECT aei FROM ae WHERE ri = ? LIMIT 1;";
+            const char   *q   = "SELECT cst, csi, srt, srv, ctm, poa, ncp, nl, esi FROM cse WHERE ri = ? LIMIT 1;";
             sqlite3_stmt *s2  = nullptr;
             int           rc2 = sqlite3_prepare_v2(db_, q, -1, &s2, nullptr);
             if (rc2 != SQLITE_OK) {
@@ -866,8 +910,29 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
                                            hasAst,
                                            ast);
                 c.resourceType = ResourceType::CSEBase;
-                c.cseID        = column_text_or_empty(s2, 0);
-                out            = c;
+                c.cseType      = static_cast<CSEType>(sqlite3_column_int(s2, 0));
+                c.cseID        = column_text_or_empty(s2, 1);
+ 
+                // supportedResourceType: unpack integers back to ResourceType
+                {
+                    zerom2m::compat::Vector<CString> srtStrs;
+                    PackedToVec(column_text_or_empty(s2, 2), srtStrs);
+                    for (unsigned i = 0; i < srtStrs.GetCount(); ++i)
+                        c.supportedResourceType.push_back(
+                            static_cast<ResourceType>(atoi(srtStrs[i].c_str())));
+                }
+ 
+                PackedToVec(column_text_or_empty(s2, 3), c.supportedReleaseVersions);
+                c.currentTime = column_text_or_empty(s2, 4);
+                PackedToVec(column_text_or_empty(s2, 5), c.pointOfAccess);
+                if (sqlite3_column_type(s2, 6) != SQLITE_NULL)
+                    c.notifCongestionPolicy = column_text_or_empty(s2, 6);
+                if (sqlite3_column_type(s2, 7) != SQLITE_NULL)
+                    c.nodeLink = column_text_or_empty(s2, 7);
+                if (sqlite3_column_type(s2, 8) != SQLITE_NULL)
+                    c.e2eSecInfo = column_text_or_empty(s2, 8);
+ 
+                out = c;
                 sqlite3_finalize(s2);
                 return true;
             }
