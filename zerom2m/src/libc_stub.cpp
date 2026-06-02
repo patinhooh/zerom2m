@@ -8,48 +8,37 @@
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
 #include <circle/util.h>
+#include <zerom2m/libc_stub.h>
 
-
-extern "C" void* memchr(const void* s, int c, size_t n);
-extern "C" size_t strspn(const char* s, const char* accept);
-extern "C" size_t strcspn(const char* s, const char* reject);
-extern "C" char* strrchr(const char* s, int c);
-
-void* memchr(const void* s, int c, size_t n)
+void *memchr(const void *s, int c, size_t n)
 {
-    const unsigned char* p = (const unsigned char*)s;
+    const unsigned char *p = (const unsigned char *)s;
 
-    while (n--)
-    {
-        if (*p == (unsigned char)c)
-            return (void*)p;
+    while (n--) {
+        if (*p == (unsigned char)c) return (void *)p;
         p++;
     }
 
     return 0;
 }
 
-size_t strspn(const char* s, const char* accept)
+size_t strspn(const char *s, const char *accept)
 {
     size_t i = 0;
 
-    while (s[i])
-    {
-        const char* a = accept;
-        int found = 0;
+    while (s[i]) {
+        const char *a     = accept;
+        int         found = 0;
 
-        while (*a)
-        {
-            if (s[i] == *a)
-            {
+        while (*a) {
+            if (s[i] == *a) {
                 found = 1;
                 break;
             }
             a++;
         }
 
-        if (!found)
-            break;
+        if (!found) break;
 
         i++;
     }
@@ -57,18 +46,15 @@ size_t strspn(const char* s, const char* accept)
     return i;
 }
 
-size_t strcspn(const char* s, const char* reject)
+size_t strcspn(const char *s, const char *reject)
 {
     size_t i = 0;
 
-    while (s[i])
-    {
-        const char* r = reject;
+    while (s[i]) {
+        const char *r = reject;
 
-        while (*r)
-        {
-            if (s[i] == *r)
-                return i;
+        while (*r) {
+            if (s[i] == *r) return i;
             r++;
         }
 
@@ -78,16 +64,14 @@ size_t strcspn(const char* s, const char* reject)
     return i;
 }
 
-char* strrchr(const char* s, int c)
+char *strrchr(const char *s, int c)
 {
-    const char* last = 0;
+    const char *last = 0;
 
-    while (*s)
-    {
-        if (*s == (char)c)
-            last = s;
+    while (*s) {
+        if (*s == (char)c) last = s;
         s++;
     }
 
-    return (char*)last;
+    return (char *)last;
 }

@@ -122,6 +122,8 @@ struct QueryParam {
 };
 
 struct HttpRequest {
+    static constexpr size_t MaxHeaders = MAX_HEADERS;
+
     RequestMethod Method{RequestMethod::RequestMethodUnknown};
 
     StringView Target;
@@ -132,6 +134,9 @@ struct HttpRequest {
 
     const HttpHeader *Headers{nullptr};
     size_t            HeaderCount{0};
+
+    HttpHeader HeaderStorage[MaxHeaders]{};
+    size_t     OwnedHeaderCount{0};
 
     const QueryParam *QueryParams{nullptr};
     size_t            QueryParamCount{0};
@@ -207,11 +212,11 @@ struct HttpResponse {
     size_t    BodyLength{0};
     char      BodyStorage[MAX_CONTENT_SIZE + 1]{};
 
-    HttpHeader HeaderStorage[MAX_RESPONSE_HEADERS]{};
+    HttpHeader HeaderStorage[MAX_HEADERS]{};
     size_t     OwnedHeaderCount{0};
 
-    CString OwnedHeaderNames[MAX_RESPONSE_HEADERS]{};
-    CString OwnedHeaderValues[MAX_RESPONSE_HEADERS]{};
+    CString OwnedHeaderNames[MAX_HEADERS]{};
+    CString OwnedHeaderValues[MAX_HEADERS]{};
 
     HttpResponse() = default;
     HttpResponse(const HttpResponse &other) { CopyFrom(other); }
@@ -244,7 +249,7 @@ struct HttpResponse {
         }
 
         // Append
-        if (OwnedHeaderCount >= MAX_RESPONSE_HEADERS) { return; }
+        if (OwnedHeaderCount >= MAX_HEADERS) { return; }
 
         OwnedHeaderNames[OwnedHeaderCount]  = name;
         OwnedHeaderValues[OwnedHeaderCount] = value;

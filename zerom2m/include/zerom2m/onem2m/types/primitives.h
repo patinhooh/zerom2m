@@ -485,46 +485,4 @@ struct ResponsePrimitive {
     Optional<CString> authorSignReqInfo; // asri
 };
 
-// Helper: build a minimal success response from a request
-inline ResponsePrimitive makeResponse(const RequestPrimitive &req,
-                                      ResponseStatusCode      rsc,
-                                      PrimitiveContent        content = PrimitiveContent{})
-{
-    ResponsePrimitive rsp;
-    rsp.responseStatusCode = rsc;
-    rsp.to                 = req.from;
-    rsp.from               = req.to;
-    rsp.requestIdentifier  = req.requestIdentifier;
-    rsp.content            = content;
-    if (req.releaseVersionIndicator) rsp.releaseVersionIndicator = req.releaseVersionIndicator;
-    return rsp;
-}
-
-// Helper: check whether a request primitive is minimally valid
-inline bool isValid(const RequestPrimitive &req, CString &errMsg)
-{
-    if (req.to.GetLength() == 0) {
-        errMsg = "Missing mandatory parameter: to";
-        return false;
-    }
-    // The 'from' (originator) is mandatory for most operations, but some
-    // bindings/operations (notably Create during AE self-registration) may
-    // omit it. Allow empty originator for Create requests.
-    if (req.from.GetLength() == 0) {
-        if (req.op != Operation::Create) {
-            errMsg = "Missing mandatory parameter: from (fr)";
-            return false;
-        }
-    }
-    if (req.requestIdentifier.GetLength() == 0) {
-        errMsg = "Missing mandatory parameter: requestIdentifier (rqi)";
-        return false;
-    }
-    if (req.op == Operation::Create && !req.resourceType.has_value()) {
-        errMsg = "Create request missing resourceType (ty)";
-        return false;
-    }
-    return true;
-}
-
 } // namespace zerom2m::onem2m::types

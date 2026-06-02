@@ -30,7 +30,7 @@ import cbor2
 from websockets.sync.client import connect, ClientConnection
 from websockets.sync.connection import Connection as WSConnection
 from websockets.exceptions import ConnectionClosed
-import reporter
+import reporter as reporter
 
 # sys.path.append('../acme')
 if '..' not in sys.path:

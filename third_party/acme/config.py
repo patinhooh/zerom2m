@@ -12,6 +12,7 @@ import socket
 from rich import print
 
 BINDING						= 'http'		# possible values: http, https, mqtt, ws, coap
+# TARGETHOST					= '10.47.211.96'	# Hostname of the CSE	
 TARGETHOST					= 'localhost'	# Hostname of the CSE	
 
 match BINDING:
@@ -62,7 +63,7 @@ match BINDING:
 
 
 
-SPID 							= 'acme.example.com'# Service Provide ID
+SPID 							= 'zerom2m.example.com'# Service Provide ID
 APPID							= 'NMyApp1Id'		# Application ID
 ORIGINATOR						= 'CAdmin'			# Admin originator
 ORIGINATORSelfReg				= 'C'				# Originator for self registration
@@ -81,11 +82,13 @@ TESTHOSTIP:Optional[str]		= None				# IP address of the host running the tests.
 TARGETHOSTIP 			= socket.gethostbyname(TARGETHOST)
 
 CSEHOST 				= TARGETHOSTIP		# CSE Server address.
+
 CSEPORT					= 8080				# CSE Server port.
+# CSEPORT					= 80				# CSE Server port.
 HTTPROOT				= '/'				# Root of the HTTP path. Needs a leading and trailing slash (or a single slash)
 CSEURL					= f'{PROTOCOL}://{CSEHOST}:{CSEPORT}{HTTPROOT}'	# CSE Server address.
 CSERN					= 'm2m'			# CSEBase Resource Name
-CSERI					= '/m2m'			# CSEBase Resource ID
+CSERI					= 'm2m'			# CSEBase Resource ID
 CSEID					= '/m2m'			# CSE-ID
 
 

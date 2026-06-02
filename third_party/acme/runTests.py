@@ -21,9 +21,9 @@ from rich.console import Console
 from rich.table import Table
 from rich.style import Style
 from rich.progress import track
-import init
+import init as init
 from acmecse.etc.Constants import Constants as C
-import reporter
+import reporter as reporter
 from datetime import datetime, timezone
 import unittest as _unittest
 import traceback as _traceback
@@ -153,7 +153,7 @@ if __name__ == '__main__':
 	parser.add_argument('--load-only', action='store_true', dest='loadTestsOnly', default=False, help='run only load test suites')
 	parser.add_argument('--verbose-requests', '-v', action='store_true', dest='verboseRequests', default=False, help='show verbose requests, responses and notifications output')
 	parser.add_argument('--disable-teardown', '-notd', action='store_true', dest='disableTearDown', default=False, help='disable the tear-down / cleanup procedure at the end of a test suite')
-	parser.add_argument('--disable-uppertester', '-nout', action='store_true', dest='disableUpperTester', default=False, help='disable the use of the upper tester interface')
+	parser.add_argument('--disable-uppertester', '-nout', action='store_true', dest='disableUpperTester', default=True, help='disable the use of the upper tester interface')
 	parser.add_argument('--exclude-tests', '-et', action='store', dest='excludeTests', nargs='+', type=str, default=[], help='exclude the specified test cases from running')
 	parser.add_argument('--run-teardown', '-runtd', action='store_true', dest='runTearDown', default=False, help='run the specified test cases\' tear-down functions and exit')
 	parser.add_argument('--run-count', action='store', dest='numberOfRuns', type=checkPositive, default=1, help='run each test suite n times (default: 1). Disables upper tester interface if n > 1.')
@@ -352,11 +352,13 @@ if __name__ == '__main__':
 	console.print(table)
 	# Emit reporter outputs (JSON + HTML)
 	ts = datetime.now(tz=timezone.utc).isoformat().replace(':', '-')
-	json_path = f'./results/run_{ts}.json'
+	json_path = f'../../results/run_{ts}.json'
 	html_path = json_path.replace('.json', '.html')
 	cse_info = { 'url': init.CSEURL, 'rvi': getattr(init, 'RELEASEVERSION', '') }
 
 	reporter.write_json(json_path, extra_meta={"runner": "runTests.py"})
 	reporter.write_html(html_path, cse_info=cse_info)
+
+	console.print(f'[bright_blue]Detailed report written to:[/bright_blue]\n\t[white]{"zerom2m" + json_path[5:]}\n\t{"zerom2m" + html_path[5:]}[/white]')
 
 	init.shutdown()

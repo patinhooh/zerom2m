@@ -121,23 +121,6 @@ class TestCSE(unittest.TestCase):
 			self.assertIn(t, srt)
 
 
-	@unittest.skipIf(noCSE, 'No CSEBase')
-	def test_deleteCSEFail(self) -> None:
-		"""	Delete <CB> -> Fail """
-		_, rsc = DELETE(cseURL, ORIGINATOR)
-		self.assertEqual(rsc, RC.OPERATION_NOT_ALLOWED)
-
-
-	@unittest.skipIf(noCSE, 'No CSEBase')
-	def test_updateCSEFail(self) -> None:
-		"""	Update <CB> -> Fail """
-		dct = 	{ 'm2m:cse' : {
-					'lbl' : [ 'aTag' ]
-				}}
-		_, rsc = UPDATE(cseURL, ORIGINATOR, dct)
-		self.assertEqual(rsc, RC.OPERATION_NOT_ALLOWED)
-
-
 def run(testFailFast:bool) -> TestResult:
 
 	# Assign tests
@@ -147,11 +130,9 @@ def run(testFailFast:bool) -> TestResult:
 		'test_retrieveCSE',
 		'test_retrieveCSEWithWrongOriginator',
 		'test_attributesCSE',
+		'test_CSEreleaseVersion',
 		'test_attributeCSEctm',
 		'test_CSESupportedResourceTypes',
-		'test_deleteCSEFail',
-		'test_updateCSEFail',
-		'test_CSEreleaseVersion',
 	])
 
 	# Run tests

@@ -106,7 +106,11 @@ static int circleSync(sqlite3_file *pFile, int /*flags*/)
 {
     CircleFile *f = toCircleFile(pFile);
     if (!f->valid) return SQLITE_OK;
-    f_sync(&f->fil); // ignore error — best effort on bare metal
+    FRESULT res = f_sync(&f->fil);
+    if (res != FR_OK) {
+        CLogger::Get()->Write("vfs", LogError, "f_sync failed: %d", res);
+        return SQLITE_IOERR_FSYNC;
+    }
     return SQLITE_OK;
 }
 

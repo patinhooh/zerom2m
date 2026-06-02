@@ -20,7 +20,7 @@ inline CString DoubleToCString(double d)
     // Emit as integer when the value is a whole number (avoids "42.000000").
     s64 iv = static_cast<s64>(d);
     if (static_cast<double>(iv) == d && d >= -1e15 && d <= 1e15) s.Format("%lld", iv);
-    else s.Format("%g", d);
+    else s.Format("%f", d);
     return s;
 }
 

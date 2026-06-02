@@ -7,9 +7,7 @@
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
-#include "http_parser.h"
-#include "http_serializer.h"
-
+#include <zerom2m/http/http_codec.h>
 #include <zerom2m/http/http_daemon.h>
 
 #include <assert.h>
@@ -186,10 +184,8 @@ void HttpDaemon::Listener(void)
 void HttpDaemon::Worker(void)
 {
     assert(socket_ != 0);
-
     socket_->SetOptionReceiveTimeout(timeoutSeconds_ * 1000000);
 
-    // allocate a single buffer for header+body parsing.
     unsigned bufSize = maxContentSize_ > 0 ? maxContentSize_ : MAX_CONTENT_SIZE;
     u8      *pBuf    = new u8[bufSize];
     if (pBuf == nullptr) {
@@ -201,46 +197,156 @@ void HttpDaemon::Worker(void)
     int nRecv = socket_->Receive((char *)pBuf, bufSize, 0);
     if (nRecv <= 0) {
         CLogger::Get()->Write(FromHttpDaemon, LogWarning, "Receive failed");
-
         delete[] pBuf;
         delete socket_;
         socket_ = nullptr;
         return;
     }
 
-    // parse request
-    HttpParser     parser;
+    size_t totalRecv = (size_t)nRecv;
+    size_t headerEnd = 0;
+    bool   foundEnd  = false;
+
+    for (size_t i = 0; i + 3 < totalRecv; i++) {
+        if (pBuf[i] == '\r' && pBuf[i + 1] == '\n' && pBuf[i + 2] == '\r' && pBuf[i + 3] == '\n') {
+            headerEnd = i + 4;
+            foundEnd  = true;
+            break;
+        }
+    }
+
+    if (foundEnd) {
+        u8 saved        = pBuf[headerEnd];
+        pBuf[headerEnd] = '\0';
+
+        size_t      contentLength = 0;
+        const char *clHeader      = strstr((const char *)pBuf, "Content-Length: ");
+        if (clHeader == nullptr) { clHeader = strstr((const char *)pBuf, "content-length: "); }
+        if (clHeader != nullptr) { contentLength = (size_t)atoi(clHeader + 16); }
+
+        pBuf[headerEnd] = saved;
+
+        size_t bodyReceived = totalRecv - headerEnd;
+        while (bodyReceived < contentLength) {
+            size_t spaceLeft = bufSize - totalRecv;
+            if (spaceLeft == 0) {
+                CLogger::Get()->Write(
+                    FromHttpDaemon,
+                    LogWarning,
+                    "Buffer full before body complete: bufSize=%u contentLength=%u",
+                    (unsigned)bufSize,
+                    (unsigned)contentLength);
+                break;
+            }
+            size_t remaining = contentLength - bodyReceived;
+            size_t toRead    = remaining < spaceLeft ? remaining : spaceLeft;
+            int    n         = socket_->Receive((char *)pBuf + totalRecv, toRead, 0);
+            if (n <= 0) {
+                CLogger::Get()->Write(FromHttpDaemon,
+                                      LogWarning,
+                                      "Receive failed waiting for body: got=%u need=%u",
+                                      (unsigned)bodyReceived,
+                                      (unsigned)contentLength);
+                break;
+            }
+            totalRecv += (size_t)n;
+            bodyReceived += (size_t)n;
+        }
+    }
+
     HttpRequest    request;
-    ResponseStatus status = parser.Parse(pBuf, (size_t)nRecv, request);
+    ResponseStatus status = HttpCodec::ParseRequest(pBuf, totalRecv, request);
     if (status != ResponseStatus::OK) {
-        // build minimal protocol error response
         HttpResponse resp;
         resp.Status     = status;
         resp.Body       = nullptr;
         resp.BodyLength = 0;
-
         CString header;
-        HttpSerializer::Serialize(resp, header);
+        HttpCodec::SerializeResponse(resp, header);
         socket_->Send((const char *)header, header.GetLength(), MSG_DONTWAIT);
         CLogger::Get()->Write(FromHttpDaemon, LogWarning, "Parse failed status=%u", status);
-
         delete[] pBuf;
         delete socket_;
         socket_ = nullptr;
         return;
     }
 
-    // delegate to application handler
     HttpResponse response;
     if (handler_) {
+        // Parse query string into QueryParams so handlers can read rcn, rp, etc.
+        QueryParam *ownedParams = nullptr;
+        size_t      paramCount  = 0;
+        if (request.Query.Data && request.Query.Length > 0) {
+            // Count parameters (split on '&')
+            const char *q = request.Query.Data;
+            // make writable within pBuf - ParseRequestLine ensured null-termination
+            // Count params
+            paramCount = 1;
+            for (const char *c = q; *c; ++c)
+                if (*c == '&') ++paramCount;
+            ownedParams = new QueryParam[paramCount];
+
+            size_t idx = 0;
+            char  *p   = const_cast<char *>(q);
+            while (p && *p && idx < paramCount) {
+                char *name = p;
+                char *eq   = strchr(p, '=');
+                char *amp  = strchr(p, '&');
+                if (eq == nullptr) {
+                    // name only
+                    if (amp) {
+                        *amp                          = '\0';
+                        ownedParams[idx].Name.Data    = name;
+                        ownedParams[idx].Name.Length  = strlen(name);
+                        ownedParams[idx].Value.Data   = nullptr;
+                        ownedParams[idx].Value.Length = 0;
+                        p                             = amp + 1;
+                    } else {
+                        ownedParams[idx].Name.Data    = name;
+                        ownedParams[idx].Name.Length  = strlen(name);
+                        ownedParams[idx].Value.Data   = nullptr;
+                        ownedParams[idx].Value.Length = 0;
+                        p                             = nullptr;
+                    }
+                } else {
+                    // name=value
+                    *eq       = '\0';
+                    char *val = eq + 1;
+                    if (amp) {
+                        *amp                          = '\0';
+                        ownedParams[idx].Name.Data    = name;
+                        ownedParams[idx].Name.Length  = strlen(name);
+                        ownedParams[idx].Value.Data   = val;
+                        ownedParams[idx].Value.Length = strlen(val);
+                        p                             = amp + 1;
+                    } else {
+                        ownedParams[idx].Name.Data    = name;
+                        ownedParams[idx].Name.Length  = strlen(name);
+                        ownedParams[idx].Value.Data   = val;
+                        ownedParams[idx].Value.Length = strlen(val);
+                        p                             = nullptr;
+                    }
+                }
+                ++idx;
+            }
+            // attach to request for handler to use
+            request.QueryParams     = ownedParams;
+            request.QueryParamCount = paramCount;
+        }
+
         response = handler_->HandleRequest(request);
+
+        if (ownedParams) {
+            delete[] ownedParams;
+            request.QueryParams     = nullptr;
+            request.QueryParamCount = 0;
+        }
     } else {
         response.Status     = ResponseStatus::InternalServerError;
         response.Body       = nullptr;
         response.BodyLength = 0;
     }
 
-    // access log
     const u8 *pClientIP = socket_->GetForeignIP();
     if (pClientIP != 0) {
         CIPAddress  ClientIP(pClientIP);
@@ -249,20 +355,16 @@ void HttpDaemon::Worker(void)
             ClientIP, request.Method, target, response.Status, (unsigned)response.BodyLength);
     }
 
-    // serialize and send
     CString header;
-    HttpSerializer::Serialize(response, header);
-
+    HttpCodec::SerializeResponse(response, header);
     if (socket_->Send((const char *)header, header.GetLength(), MSG_DONTWAIT) < 0) {
         CLogger::Get()->Write(FromHttpDaemon, LogError, "Cannot send response header");
-
         delete[] pBuf;
         delete socket_;
         socket_ = nullptr;
         return;
     }
 
-    // send body (unless HEAD)
     if (request.Method != RequestMethod::HEAD && response.BodyLength > 0 &&
         response.Body != nullptr) {
         if (socket_->Send(response.Body, response.BodyLength, MSG_DONTWAIT) < 0) {

@@ -10,11 +10,12 @@
 #pragma once
 
 #include <zerom2m/compat/vector.h>
-#include <zerom2m/onem2m/types/primitives.h>
 #include <zerom2m/config/system_config.h>
+#include <zerom2m/onem2m/types/primitives.h>
 #include <zerom2m/onem2m/types/resources.h>
 #include <zerom2m/sqlite/database.h>
 
+#include <circle/net/netsubsystem.h>
 #include <circle/types.h>
 
 namespace zerom2m::onem2m
@@ -39,22 +40,49 @@ public:
     OneM2MService &operator=(OneM2MService &&)      = delete;
 
     void              Initialize(const SystemConfig &config);
+    void              SetNetSubSystem(CNetSubSystem &netSubSystem);
     ResponsePrimitive HandleRequest(const RequestPrimitive &request);
+
     ResponsePrimitive Create(const RequestPrimitive &request);
+    ResponsePrimitive CreateAE(const AE &ae, const RequestPrimitive &req, const CString &target);
+    ResponsePrimitive CreateContainer(const Container &con, const RequestPrimitive &req, const CString &target);
+    ResponsePrimitive CreateContentInstance(const ContentInstance &cin, const RequestPrimitive &req, const CString &target);
+    ResponsePrimitive CreateSubscription(const Subscription &sub, const RequestPrimitive &req, const CString &target);
+
     ResponsePrimitive Retrieve(const RequestPrimitive &request);
+    ResponsePrimitive RetrieveCSE(const RequestPrimitive &request,
+                                  const CSEBase       &cse,
+                                  const CString       &target);
+    ResponsePrimitive RetrieveAE(const RequestPrimitive &request,
+                                 const AE            &ae,
+                                 const CString       &target);
+    ResponsePrimitive RetrieveContainer(const RequestPrimitive &request,
+                                       const Container   &con,
+                                       const CString     &target);
+    ResponsePrimitive RetrieveContentInstance(const RequestPrimitive &request,
+                                              const ContentInstance &cin,
+                                              const CString         &target);
+    ResponsePrimitive RetrieveSubscription(const RequestPrimitive &request,
+                                            const Subscription    &sub,
+                                            const CString         &target);
+
+    // XXX: Not Implemented.
     ResponsePrimitive Update(const RequestPrimitive &request);
     ResponsePrimitive Delete(const RequestPrimitive &request);
-    ResponsePrimitive Notify(const RequestPrimitive &request);
 
 private:
     OneM2MService()  = default;
     ~OneM2MService() = default;
 
-    boolean initialized_ = false;
+    CNetSubSystem *netSubSystem_{nullptr};
 
+    boolean initialized_    = false;
+    u64     nextResourceId_ = 1;
 
+    CString                   spId_;
     zerom2m::sqlite::Database db_;
-    u64                      nextResourceId_ = 1;
+
+    CString GetId();
 };
 
 } // namespace zerom2m::onem2m

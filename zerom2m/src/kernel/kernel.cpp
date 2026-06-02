@@ -13,8 +13,6 @@
 #include <zerom2m/config/config_parser.h>
 #include <zerom2m/kernel/kernel.h>
 #include <zerom2m/kernel/network_manager.h>
-
-#include <zerom2m/sqlite/sqlite3.h>
 #include <zerom2m/sqlite/sqlite_vfs.h>
 
 namespace zerom2m::kernel

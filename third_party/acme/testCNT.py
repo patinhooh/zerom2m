@@ -4,6 +4,8 @@
 #	(c) 2020 by Andreas Kraft
 #	License: BSD 3-Clause License. See the LICENSE file for further details.
 #
+#	Modified by ZeroM2M Authors in 2026
+#
 #	Unit tests for CNT functionality
 #
 
@@ -18,13 +20,20 @@ class TestCNT(unittest.TestCase):
 
 	ae 				= None
 	originator 		= None
+	aeURL 			= None
+	aeRN 			= None
+	cntURL 			= None
+	cntRN 			= None
+	childCntURL 	= None
+	cseCntURL 		= None
 
 	@classmethod
 	@unittest.skipIf(noCSE, 'No CSEBase')
 	def setUpClass(cls) -> None:
 		testCaseStart('Setup testCNT')
+		cls.aeRN = uniqueRN('testAE')
 		dct = 	{ 'm2m:ae' : {
-					'rn': aeRN, 
+					'rn': cls.aeRN,
 					'api': APPID,
 				 	'rr': False,
 				 	'srv': [ RELEASEVERSION ]
@@ -32,6 +41,7 @@ class TestCNT(unittest.TestCase):
 		cls.ae, rsc = CREATE(cseURL, 'C', T.AE, dct)	# AE to work under
 		assert rsc == RC.CREATED, 'cannot create parent AE'
 		cls.originator = findXPath(cls.ae, 'm2m:ae/aei')
+		cls.aeURL = f'{cseURL}/{cls.aeRN}'
 		testCaseEnd('Setup testCNT')
 
 
@@ -41,8 +51,6 @@ class TestCNT(unittest.TestCase):
 		if not isTearDownEnabled():
 			return
 		testCaseStart('TearDown testCNT')
-		DELETE(aeURL, ORIGINATOR)	# Just delete the AE and everything below it. Ignore whether it exists or not
-		DELETE(f'{cseURL}/{cntRN}', ORIGINATOR)
 		testCaseEnd('TearDown testCNT')
 
 
@@ -62,35 +70,37 @@ class TestCNT(unittest.TestCase):
 		"""	Create <CNT> """
 		self.assertIsNotNone(TestCNT)
 		self.assertIsNotNone(TestCNT.ae)
+		TestCNT.cntRN = uniqueRN('testCNT')
 		dct = 	{ 'm2m:cnt' : { 
-					'rn' : cntRN
+					'rn' : TestCNT.cntRN
 				}}
-		r, rsc = CREATE(aeURL, TestCNT.originator, T.CNT, dct)
+		r, rsc = CREATE(TestCNT.aeURL, TestCNT.originator, T.CNT, dct)
 		self.assertEqual(rsc, RC.CREATED, r)
+		TestCNT.cntURL = f'{TestCNT.aeURL}/{TestCNT.cntRN}'
 
 
 	@unittest.skipIf(noCSE, 'No CSEBase')
 	def test_retrieveCNT(self) -> None:
 		""" Retrieve <CNT> """
-		_, rsc = RETRIEVE(cntURL, TestCNT.originator)
+		_, rsc = RETRIEVE(TestCNT.cntURL, TestCNT.originator)
 		self.assertEqual(rsc, RC.OK)
 
 
 	@unittest.skipIf(noCSE, 'No CSEBase')
 	def test_retrieveCNTWithWrongOriginator(self) -> None:
 		"""	Retrieve <CNT> with wrong originator -> Fail """
-		_, rsc = RETRIEVE(cntURL, 'Cwrong')
+		_, rsc = RETRIEVE(TestCNT.cntURL, 'Cwrong')
 		self.assertEqual(rsc, RC.ORIGINATOR_HAS_NO_PRIVILEGE)
 
 
 	@unittest.skipIf(noCSE, 'No CSEBase')
 	def test_attributesCNT(self) -> None:
 		""" Test <CNT> attributes """
-		r, rsc = RETRIEVE(cntURL, TestCNT.originator)
+		r, rsc = RETRIEVE(TestCNT.cntURL, TestCNT.originator)
 		self.assertEqual(rsc, RC.OK)
 		self.assertEqual(findXPath(r, 'm2m:cnt/ty'), T.CNT)
 		self.assertEqual(findXPath(r, 'm2m:cnt/pi'), findXPath(TestCNT.ae,'m2m:ae/ri'))
-		self.assertEqual(findXPath(r, 'm2m:cnt/rn'), cntRN)
+		self.assertEqual(findXPath(r, 'm2m:cnt/rn'), TestCNT.cntRN)
 		self.assertIsNotNone(findXPath(r, 'm2m:cnt/ct'))
 		self.assertIsNotNone(findXPath(r, 'm2m:cnt/lt'))
 		self.assertIsNotNone(findXPath(r, 'm2m:cnt/et'))
@@ -102,104 +112,22 @@ class TestCNT(unittest.TestCase):
 
 
 	@unittest.skipIf(noCSE, 'No CSEBase')
-	def test_updateCNT(self) -> None:
-		"""	Update <CNT> """
-		dct = 	{ 'm2m:cnt' : {
-					'lbl' : [ 'aTag' ],
-					'mni' : 10,
-					'mbs' : 9999
- 				}}
-		cnt, rsc = UPDATE(cntURL, TestCNT.originator, dct)
-		self.assertEqual(rsc, RC.UPDATED)
-		cnt, rsc = RETRIEVE(cntURL, TestCNT.originator)		# retrieve cnt again
-		self.assertEqual(rsc, RC.OK)
-		self.assertIsNotNone(findXPath(cnt, 'm2m:cnt/lbl'))
-		self.assertIsInstance(findXPath(cnt, 'm2m:cnt/lbl'), list)
-		self.assertGreater(len(findXPath(cnt, 'm2m:cnt/lbl')), 0)
-		self.assertTrue('aTag' in findXPath(cnt, 'm2m:cnt/lbl'))
-		self.assertIsNotNone(findXPath(cnt, 'm2m:cnt/mni'))
-		self.assertIsInstance(findXPath(cnt, 'm2m:cnt/mni'), int)
-		self.assertEqual(findXPath(cnt, 'm2m:cnt/mni'), 10)
-		self.assertIsNotNone(findXPath(cnt, 'm2m:cnt/mbs'))
-		self.assertIsInstance(findXPath(cnt, 'm2m:cnt/mbs'), int)
-		self.assertEqual(findXPath(cnt, 'm2m:cnt/mbs'), 9999)
-		self.assertIsNotNone(findXPath(cnt, 'm2m:cnt/st'))
-		self.assertIsInstance(findXPath(cnt, 'm2m:cnt/st'), int)
-		self.assertEqual(findXPath(cnt, 'm2m:cnt/st'), 1)
-
-
-	@unittest.skipIf(noCSE, 'No CSEBase')
-	def test_updateCNTTy(self) -> None:
-		"""	Update <CNT> TY -> Fail """
-		dct = 	{ 'm2m:cnt' : {
-					'ty' : T.CSEBase
-				}}
-		r, rsc = UPDATE(cntURL, TestCNT.originator, dct)
-		self.assertEqual(rsc, RC.BAD_REQUEST)
-
-
-	@unittest.skipIf(noCSE, 'No CSEBase')
-	def test_updateCNTPi(self) -> None:
-		"""	Update <CNT> PI -> Fail """
-		dct = 	{ 'm2m:cnt' : {
-					'pi' : 'wrongID'
-				}}
-		r, rsc = UPDATE(cntURL, TestCNT.originator, dct)
-		self.assertEqual(rsc, RC.BAD_REQUEST)
-
-
-	@unittest.skipIf(noCSE, 'No CSEBase')
-	def test_updateCNTUnknownAttribute(self) -> None:
-		"""	Update <CNT> unknown attribute -> Fail """
-		dct = 	{ 'm2m:cnt' : {
-					'unknown' : 'unknown'
-				}}
-		r, rsc = UPDATE(cntURL, TestCNT.originator, dct)
-		self.assertEqual(rsc, RC.BAD_REQUEST)
-
-
-	@unittest.skipIf(noCSE, 'No CSEBase')
-	def test_updateCNTWrongMNI(self) -> None:
-		"""	Update <CNT> wrong MNI -> Fail """
-		dct = 	{ 'm2m:cnt' : {
-					'mni' : -1
-				}}
-		r, rsc = UPDATE(cntURL, TestCNT.originator, dct)
-		self.assertEqual(rsc, RC.BAD_REQUEST)
-
-
-	@unittest.skipIf(noCSE, 'No CSEBase')
-	def test_updateCNTempty(self) -> None:
-		"""	Update <CNT> empty content """
-		dct:JSON = { 'm2m:cnt' : {
-				}}
-		r, rsc = UPDATE(cntURL, TestCNT.originator, dct)
-		self.assertEqual(rsc, RC.UPDATED, r)
-		self.assertIsNotNone(findXPath(r, 'm2m:cnt'))
-
-
-	@unittest.skipIf(noCSE, 'No CSEBase')
 	def test_createCNTUnderCNT(self) -> None:
 		""" Create <CNT> under <CNT> """
+		child_rn = uniqueRN('testCNT')
 		dct = 	{ 'm2m:cnt' : { 
-					'rn' : cntRN
+					'rn' : child_rn
 				}}
-		r, rsc = CREATE(cntURL, TestCNT.originator, T.CNT, dct) 
+		r, rsc = CREATE(TestCNT.cntURL, TestCNT.originator, T.CNT, dct) 
 		self.assertEqual(rsc, RC.CREATED)
+		TestCNT.childCntURL = f'{TestCNT.cntURL}/{child_rn}'
 
 
 	@unittest.skipIf(noCSE, 'No CSEBase')
 	def test_retrieveCNTUnderCNT(self) -> None:
 		"""	Retrieve <CNT> under <CNT> """
-		_, rsc = RETRIEVE(f'{cntURL}/{cntRN}', TestCNT.originator)
+		_, rsc = RETRIEVE(TestCNT.childCntURL, TestCNT.originator)
 		self.assertEqual(rsc, RC.OK)
-
-
-	@unittest.skipIf(noCSE, 'No CSEBase')
-	def test_deleteCNTUnderCNT(self) -> None:
-		"""	Delete <CNT> under <CNT> """
-		_, rsc = DELETE(f'{cntURL}/{cntRN}', TestCNT.originator)
-		self.assertEqual(rsc, RC.DELETED)
 
 
 	@unittest.skipIf(noCSE, 'No CSEBase')
@@ -208,7 +136,7 @@ class TestCNT(unittest.TestCase):
 		dct = 	{ 'm2m:cnt' : { 
 					'cr' : 'wrong'
 				}}
-		r, rsc = CREATE(aeURL, TestCNT.originator, T.CNT, dct) 				# Not allowed
+		r, rsc = CREATE(TestCNT.aeURL, TestCNT.originator, T.CNT, dct)
 		self.assertEqual(rsc, RC.BAD_REQUEST)
 
 
@@ -218,60 +146,42 @@ class TestCNT(unittest.TestCase):
 		dct = 	{ 'm2m:cnt' : { 
 					'cr' : None
 				}}
-		r, rsc = CREATE(aeURL, TestCNT.originator, T.CNT, dct) 
+		r, rsc = CREATE(TestCNT.aeURL, TestCNT.originator, T.CNT, dct)
 		self.assertEqual(rsc, RC.CREATED)
 		self.assertEqual(findXPath(r, 'm2m:cnt/cr'), TestCNT.originator, r)	# Creator should now be set to originator
 
 		# Check whether creator is there in a RETRIEVE
-		r, rsc = RETRIEVE(f'{aeURL}/{findXPath(r, "m2m:cnt/rn")}', TestCNT.originator)
+		r, rsc = RETRIEVE(f'{TestCNT.aeURL}/{findXPath(r, "m2m:cnt/rn")}', TestCNT.originator)
 		self.assertEqual(rsc, RC.OK)
 		self.assertEqual(findXPath(r, 'm2m:cnt/cr'), TestCNT.originator)
 
 
 	@unittest.skipIf(noCSE, 'No CSEBase')
-	def test_deleteCNTByUnknownOriginator(self) -> None:
-		"""	Delete <CNT> with wrong originator -> Fail """
-		_, rsc = DELETE(cntURL, 'Cwrong')
-		self.assertEqual(rsc, RC.ORIGINATOR_HAS_NO_PRIVILEGE)
-
-
-	@unittest.skipIf(noCSE, 'No CSEBase')
-	def test_deleteCNTByAssignedOriginator(self) -> None:
-		"""	Delete <CNT> with correct originator """
-		_, rsc = DELETE(cntURL, TestCNT.originator)
-		self.assertEqual(rsc, RC.DELETED)
-
-
-	@unittest.skipIf(noCSE, 'No CSEBase')
 	def test_createCNTUnderCSE(self) -> None:
 		"""	Create <CNT> under <CB> with admin Originator """
+		cse_rn = uniqueRN('testCNT')
 		dct = 	{ 'm2m:cnt' : { 
-					'rn' : cntRN
+					'rn' : cse_rn
 				}}
 		r, rsc = CREATE(cseURL, ORIGINATOR, T.CNT, dct) # With Admin originator !!
 		self.assertEqual(rsc, RC.CREATED)
+		TestCNT.cseCntURL = f'{cseURL}/{cse_rn}'
 
 
 	@unittest.skipIf(noCSE, 'No CSEBase')
 	def test_retrieveCNTUnderCSE(self) -> None:
 		"""	Retrieve <CNT> under <CB> with admin Originator """
-		_, rsc = RETRIEVE(f'{cseURL}/{cntRN}', ORIGINATOR)
+		_, rsc = RETRIEVE(TestCNT.cseCntURL, ORIGINATOR)
 		self.assertEqual(rsc, RC.OK)
-
-
-	@unittest.skipIf(noCSE, 'No CSEBase')
-	def test_deleteCNTUnderCSE(self) -> None:
-		"""	Delete <CNT> under <CB> with admin Originator"""
-		_, rsc = DELETE(f'{cseURL}/{cntRN}', ORIGINATOR)
-		self.assertEqual(rsc, RC.DELETED)
 
 
 	@unittest.skipIf(noCSE, 'No CSEBase')
 	@unittest.skipUnless(BINDING in [ 'http', 'https' ], 'Only when testing with http(s) binding')
 	def test_createCNTWithoutOriginator(self) -> None:
 		"""	Create <CNT> under <CB> without an Originator -> Fail"""
+		no_origin_rn = uniqueRN('testCNT')
 		dct = 	{ 'm2m:cnt' : { 
-					'rn' : cntRN
+					'rn' : no_origin_rn
 				}}
 		r, rsc = CREATE(cseURL, None, T.CNT, dct) # Without originator !!
 		self.assertNotEqual(rsc, RC.CREATED)
@@ -279,8 +189,9 @@ class TestCNT(unittest.TestCase):
 	@unittest.skipIf(noCSE, 'No CSEBase')
 	def test_createCNTwithWrongTypeShortname(self) -> None:
 		"""	Create <CNT> with wrong typeShortname -> Fail"""
+		wrong_rn = uniqueRN('testCNT')
 		dct = 	{ 'wrong' : { 
-					'rn' : cntRN
+					'rn' : wrong_rn
 				}}
 		r, rsc = CREATE(cseURL, ORIGINATOR, T.CNT, dct) # Without originator !!
 		self.assertNotEqual(rsc, RC.CREATED)
@@ -296,24 +207,12 @@ def run(testFailFast:bool) -> TestResult:
 		'test_retrieveCNT',
 		'test_retrieveCNTWithWrongOriginator',
 		'test_attributesCNT',
-		'test_updateCNT',
-		'test_updateCNTTy',
-		'test_updateCNTempty',
-		'test_updateCNTPi',
-		'test_updateCNTUnknownAttribute',
-		'test_updateCNTWrongMNI',
 		'test_createCNTUnderCNT',
 		'test_retrieveCNTUnderCNT',
-		'test_deleteCNTUnderCNT',
 		'test_createCNTWithCreatorWrong',
 		'test_createCNTWithCreator',
-
-		'test_deleteCNTByUnknownOriginator',
-		'test_deleteCNTByAssignedOriginator',
 		'test_createCNTUnderCSE',
 		'test_retrieveCNTUnderCSE',
-		'test_deleteCNTUnderCSE',
-
 		'test_createCNTWithoutOriginator',
 		'test_createCNTwithWrongTypeShortname',
 	

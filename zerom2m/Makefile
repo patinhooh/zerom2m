@@ -85,6 +85,16 @@ check:
 	@echo "  CHECK"
 	@$(CPP) $(CPPFLAGS) -fsyntax-only $(CPP_SRCS)
 
+test:
+	@if [ -z "$(TESTS)" ]; then \
+		echo 'Please specify a test to run with TESTS="test1.py test2.py ..."'; \
+		exit 1; \
+	fi
+	@cd ../third_party/acme/ && uv run runTests.py $(TESTS) -v --no-failfast
+
+test-all:
+	@cd ../third_party/acme/ && uv run runTests.py testCSE.py testAE.py testCNT.py testCIN.py testCNT_CIN.py testAddressing.py testSUB.py -v  --no-failfast
+
 # Tools
 monitor-picocom:
 	@picocom --baud $(USERBAUD) --omap crlf --stopbits 1 $(SERIALPORT)

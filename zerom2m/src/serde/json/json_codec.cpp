@@ -163,10 +163,35 @@ JsonValue *JsonCodec::SerializeContentInstance(const ContentInstance &r) const
 
     if (r.stateTag.has_value())
         obj->AddMember(attr::STATE_TAG, new JsonValue(static_cast<double>(*r.stateTag)));
+    if (r.creator.has_value()) obj->AddMember(attr::CREATOR, new JsonValue(*r.creator));
     if (r.contentInfo.has_value())
         obj->AddMember(attr::CONTENT_INFO, new JsonValue(*r.contentInfo));
     obj->AddMember(attr::CONTENT_SIZE, new JsonValue(static_cast<double>(r.contentSize)));
-    obj->AddMember(attr::CONTENT, new JsonValue(r.content));
+    if (r.content.GetLength() > 0) {
+        // Avoid treating unquoted alpha strings as JSON primitives (which
+        // would be parsed to number 0). Only attempt to parse the content
+        // as JSON when the first non-space character indicates a JSON value
+        // (object, array, quoted string, digit, minus or literal starts).
+        const char *p = r.content.c_str();
+        while (*p && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) ++p;
+        bool tryParse = false;
+        if (*p) {
+            if (*p == '{' || *p == '[' || *p == '"' || *p == '-' || (*p >= '0' && *p <= '9')) tryParse = true;
+            else if (strncmp(p, "true", 4) == 0 || strncmp(p, "false", 5) == 0 || strncmp(p, "null", 4) == 0)
+                tryParse = true;
+        }
+        if (tryParse) {
+            if (JsonValue *parsed = JsonDocument::Parse(r.content.c_str())) {
+                obj->AddMember(attr::CONTENT, parsed);
+            } else {
+                obj->AddMember(attr::CONTENT, new JsonValue(r.content));
+            }
+        } else {
+            obj->AddMember(attr::CONTENT, new JsonValue(r.content));
+        }
+    } else {
+        obj->AddMember(attr::CONTENT, new JsonValue());
+    }
     if (r.dataGenerationTime.has_value())
         obj->AddMember(attr::DATA_GENERATION_TIME, new JsonValue(*r.dataGenerationTime));
 
@@ -197,6 +222,17 @@ JsonValue *JsonCodec::SerializeSubscription(const Subscription &r) const
 
     if (!r.notificationURI.empty())
         obj->AddMember(attr::NOTIFICATION_URI, MakeStringArray(r.notificationURI));
+    if (r.batchNotify.has_value()) {
+        JsonValue *bnObj = new JsonValue(JSON_OBJECT);
+        if (r.batchNotify->number > 0)
+            bnObj->AddMember(dt::NUMBER, new JsonValue(static_cast<double>(r.batchNotify->number)));
+        if (r.batchNotify->duration.has_value()) {
+            bnObj->AddMember(dt::DURATION, new JsonValue(*r.batchNotify->duration));
+        } else if (r.batchNotify->number > 0) {
+            bnObj->AddMember(dt::DURATION, new JsonValue(1.0));
+        }
+        obj->AddMember(attr::BATCH_NOTIFY, bnObj);
+    }
     if (r.notificationContentType.has_value())
         obj->AddMember(attr::NOTIFICATION_CONTENT_TYPE,
                        new JsonValue(static_cast<double>((u8)*r.notificationContentType)));
@@ -207,6 +243,8 @@ JsonValue *JsonCodec::SerializeSubscription(const Subscription &r) const
         obj->AddMember(attr::LATEST_NOTIFY, new JsonValue(static_cast<boolean>(*r.latestNotify)));
     if (r.subscriberURI.has_value())
         obj->AddMember(attr::SUBSCRIBER_URI, new JsonValue(*r.subscriberURI));
+    if (r.creator.has_value() && r.creatorProvided.has_value() && *r.creatorProvided)
+        obj->AddMember(attr::CREATOR, new JsonValue(*r.creator));
 
     // EventNotificationCriteria
     {
@@ -220,6 +258,13 @@ JsonValue *JsonCodec::SerializeSubscription(const Subscription &r) const
                     new JsonValue(static_cast<double>((u8)enc.notificationEventType[i])));
             encObj->AddMember(dt::NOTIFICATION_EVENT_TYPE, netArr);
         }
+        if (!enc.childResourceType.empty()) {
+            JsonValue *chtyArr = new JsonValue(JSON_ARRAY);
+            for (size_t i = 0; i < enc.childResourceType.size(); ++i)
+                chtyArr->AppendElement(new JsonValue(static_cast<double>((u8)enc.childResourceType[i])));
+            encObj->AddMember(dt::fc::CHILD_RESOURCE_TYPE, chtyArr);
+        }
+        if (!enc.attributeList.empty()) encObj->AddMember(dt::fc::ATTRIBUTE, MakeStringArray(enc.attributeList));
         if (!enc.labels.empty()) encObj->AddMember(dt::fc::LABELS, MakeStringArray(enc.labels));
 
         obj->AddMember(attr::EVENT_NOTIFICATION_CRITERIA, encObj);
@@ -597,9 +642,14 @@ JsonValue *JsonCodec::SerializePrimitiveContentValue(const PrimitiveContent &inp
             refObj->AddMember(dt::VALUE, new JsonValue(ref.value));
             arr->AppendElement(refObj);
         }
-        JsonValue *root = new JsonValue(JSON_OBJECT);
-        root->AddMember(dt::CHILD_RESOURCE, arr);
-        return root;
+        // Tests expect discovery results to be wrapped as `m2m:rrl` with an
+        // inner `rrf` array. Build that structure here so consumers see
+        // `m2m:rrl/rrf` as expected.
+        JsonValue *rrfObj = new JsonValue(JSON_OBJECT);
+        rrfObj->AddMember("rrf", arr);
+        JsonValue *wrapper = new JsonValue(JSON_OBJECT);
+        wrapper->AddMember("m2m:rrl", rrfObj);
+        return wrapper;
     }
     return nullptr;
 }
@@ -657,9 +707,7 @@ boolean JsonCodec::DeserializeAE(const JsonValue &root, RequestPrimitive &out) c
 
     // Detect out-of-spec attributes that must be rejected during Create (e.g. 'cr').
     // Propagate a marker in the primitive so service logic can return BadRequest.
-    if (ae->GetMember(attr::CREATOR)) {
-        out.vendorInformation = CString("has_creator");
-    }
+    if (ae->GetMember(attr::CREATOR)) { out.vendorInformation = CString("has_creator"); }
 
     out.content = r;
     return true;
@@ -672,6 +720,13 @@ boolean JsonCodec::DeserializeContainer(const JsonValue &root, RequestPrimitive 
 
     Container r;
     r.resourceName = GetString(*cnt, attr::RESOURCE_NAME);
+    if (const JsonValue *cr = cnt->GetMember(attr::CREATOR)) {
+        if (cr->GetType() == JSON_NULL) {
+            out.vendorInformation = CString("cnt_creator_null");
+        } else {
+            out.vendorInformation = CString("cnt_creator_present");
+        }
+    }
     GetOptS64(*cnt, attr::MAX_NR_OF_INSTANCES, r.maxNrOfInstances);
     GetOptS64(*cnt, attr::MAX_BYTE_SIZE, r.maxByteSize);
     GetOptS64(*cnt, attr::MAX_INSTANCE_AGE, r.maxInstanceAge);
@@ -690,12 +745,40 @@ boolean JsonCodec::DeserializeContentInstance(const JsonValue &root, RequestPrim
 
     ContentInstance r;
     r.resourceName = GetString(*cin, attr::RESOURCE_NAME);
+    if (const JsonValue *cr = cin->GetMember(attr::CREATOR)) {
+        if (cr->GetType() == JSON_NULL) {
+            out.vendorInformation = CString("cin_creator_null");
+        } else {
+            out.vendorInformation = CString("cin_creator_present");
+        }
+    }
+    if (cin->GetMember(attr::ACCESS_CONTROL_POLICY_IDS)) {
+        out.vendorInformation = CString("cin_has_acpi");
+    }
     GetOptString(*cin, attr::CONTENT_INFO, r.contentInfo);
-    r.content            = GetString(*cin, attr::CONTENT);
+    // Preserve the content for `con`. If the content is a JSON string, store the
+    // raw string value (no surrounding quotes) so contentSize matches the
+    // actual payload size expected by tests/spec. For non-string values keep the
+    // serialized JSON so objects/arrays/numbers round-trip correctly.
+    const JsonValue *conV = cin->GetMember(attr::CONTENT);
+    if (conV) {
+        if (conV->GetType() == JSON_STRING) {
+            const CString *s = conV->GetString();
+            if (s) r.content = *s;
+            else r.content = CString();
+        } else {
+            r.content = conV->Serialize();
+        }
+    }
     const JsonValue *csV = cin->GetMember(attr::CONTENT_SIZE);
     if (csV) {
         auto n = csV->GetNumber();
         if (n.has_value()) r.contentSize = static_cast<s64>(*n);
+    }
+    // If content size not provided, estimate from serialized content
+    if (!csV) {
+        if (r.content.GetLength() > 0) r.contentSize = static_cast<s64>(r.content.GetLength());
+        else r.contentSize = 0;
     }
     GetOptString(*cin, attr::DATA_GENERATION_TIME, r.dataGenerationTime);
     GetStringArray(*cin, attr::LABELS, r.labels);
@@ -738,13 +821,70 @@ boolean JsonCodec::DeserializeSubscription(const JsonValue &root, RequestPrimiti
     Subscription r;
     r.resourceName = GetString(*sub, attr::RESOURCE_NAME);
     GetStringArray(*sub, attr::NOTIFICATION_URI, r.notificationURI);
+    const JsonValue *bnObj = sub->GetMember(attr::BATCH_NOTIFY);
+    if (bnObj) {
+        BatchNotify bn;
+        const JsonValue *numV = bnObj->GetMember(dt::NUMBER);
+        if (numV) {
+            auto n = numV->GetNumber();
+            if (n.has_value()) bn.number = static_cast<s32>(*n);
+        }
+        GetOptString(*bnObj, dt::DURATION, bn.duration);
+        r.batchNotify = bn;
+    }
     GetOptString(*sub, attr::SUBSCRIBER_URI, r.subscriberURI);
     GetOptS32(*sub, attr::EXPIRATION_COUNTER, r.expirationCounter);
     GetOptBool(*sub, attr::LATEST_NOTIFY, r.latestNotify);
     GetStringArray(*sub, attr::LABELS, r.labels);
 
+    // Detect explicit creator attribute for subscriptions so service logic
+    // can decide whether to reject it (present) or accept null (set to
+    // originator). Propagate a marker in the primitive via vendorInformation
+    // and record that the client explicitly provided the creator (including
+    // explicit null) on the Subscription content object.
+    if (const JsonValue *cr = sub->GetMember(attr::CREATOR)) {
+        r.creatorProvided = true;
+        if (cr->GetType() == JSON_NULL) {
+            out.vendorInformation = CString("sub_creator_null");
+        } else {
+            out.vendorInformation = CString("sub_creator_present");
+            const CString *s = cr->GetString();
+            if (s) r.creator = *s;
+        }
+    }
+
     const JsonValue *encObj = sub->GetMember(attr::EVENT_NOTIFICATION_CRITERIA);
     if (encObj) ParseEventNotificationCriteria(*encObj, r.eventNotificationCriteria);
+
+    // Parse explicit notificationContentType (nct) if present so the
+    // service can decide compatibility for blocking-update subscriptions.
+    if (const JsonValue *nctV = sub->GetMember(attr::NOTIFICATION_CONTENT_TYPE)) {
+        auto n = nctV->GetNumber();
+        if (n.has_value()) r.notificationContentType = static_cast<NotificationContentType>(static_cast<u8>(*n));
+    }
+
+    out.content = r;
+    return true;
+}
+
+boolean JsonCodec::DeserializeTimeSeries(const JsonValue &root, RequestPrimitive &out) const
+{
+    const JsonValue *ts = root.GetMember("m2m:ts");
+    if (!ts) return false;
+
+    TimeSeries r;
+    r.resourceName = GetString(*ts, attr::RESOURCE_NAME);
+    GetStringArray(*ts, attr::LABELS, r.labels);
+    GetOptS64(*ts, attr::MAX_NR_OF_INSTANCES, r.maxNrOfInstances);
+    GetOptS64(*ts, attr::MAX_BYTE_SIZE, r.maxByteSize);
+    GetOptS64(*ts, attr::MAX_INSTANCE_AGE, r.maxInstanceAge);
+    GetOptS32(*ts, attr::PERIODIC_INTERVAL, r.periodicInterval);
+    GetOptS32(*ts, attr::PERIODIC_INTERVAL_DELTA, r.periodicIntervalDelta);
+    GetOptString(*ts, attr::EXPIRATION_TIME, r.expirationTime);
+    if (const JsonValue *mdd = ts->GetMember(attr::MISSING_DATA_DETECT)) {
+        auto b = mdd->GetBoolean();
+        if (b.has_value()) r.missingDataDetect = *b;
+    }
 
     out.content = r;
     return true;
@@ -759,6 +899,7 @@ boolean JsonCodec::ParseEventNotificationCriteria(const JsonValue           &enc
     GetOptString(encObj, dt::fc::UNMODIFIED_SINCE, enc.unmodifiedSince);
     GetOptS64(encObj, dt::fc::SIZE_ABOVE, enc.sizeAbove);
     GetOptS64(encObj, dt::fc::SIZE_BELOW, enc.sizeBelow);
+    GetStringArray(encObj, dt::fc::ATTRIBUTE, enc.attributeList);
     GetStringArray(encObj, dt::fc::LABELS, enc.labels);
 
     const JsonValue *netArr = encObj.GetMember(dt::NOTIFICATION_EVENT_TYPE);
@@ -770,6 +911,19 @@ boolean JsonCodec::ParseEventNotificationCriteria(const JsonValue           &enc
                 if (v.has_value())
                     enc.notificationEventType.push_back(
                         static_cast<NotificationEventType>(static_cast<u8>(*v)));
+            }
+        }
+    }
+
+    const JsonValue *chtyArr = encObj.GetMember(dt::fc::CHILD_RESOURCE_TYPE);
+    if (chtyArr && chtyArr->GetType() == JSON_ARRAY) {
+        for (size_t i = 0; i < chtyArr->GetArraySize(); ++i) {
+            auto n = chtyArr->GetElement(i);
+            if (n) {
+                auto v = n->GetNumber();
+                if (v.has_value())
+                    enc.childResourceType.push_back(
+                        static_cast<ResourceType>(static_cast<u8>(*v)));
             }
         }
     }
@@ -817,6 +971,9 @@ boolean JsonCodec::DeserializeRequestBody(const CString &input, RequestPrimitive
     if (input.GetLength() == 0) return false;
 
     JsonValue *root = JsonDocument::Parse(input.c_str());
+    // CLogger::Get()->Write(
+    //     "JsonCodec", LogDebug, "DeserializeRequestBody: parsed JSON:\n%s", root ?
+    //     root->Serialize().c_str() : "(null)");
     if (!root) return false;
 
     boolean ok = false;
@@ -825,6 +982,7 @@ boolean JsonCodec::DeserializeRequestBody(const CString &input, RequestPrimitive
     else if (root->GetMember("m2m:cin")) ok = DeserializeContentInstance(*root, out);
     else if (root->GetMember("m2m:grp")) ok = DeserializeGroup(*root, out);
     else if (root->GetMember("m2m:sub")) ok = DeserializeSubscription(*root, out);
+    else if (root->GetMember("m2m:ts")) ok = DeserializeTimeSeries(*root, out);
     else {
         CLogger::Get()->Write(
             "JsonCodec", LogDebug, "DeserializeRequestBody: unrecognized JSON payload");
