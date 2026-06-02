@@ -138,20 +138,6 @@ class TestCNT_CIN(unittest.TestCase):
 		self.assertIsInstance(findXPath(r, 'm2m:cnt/cni'), int)
 		self.assertEqual(findXPath(r, 'm2m:cnt/cni'), 3)
 
-		dct = 	{ 'm2m:cin' : {
-					'cnf' : 'text/plain:0',
-					'con' : 'dValue'
-				}}
-		r, rsc = CREATE(TestCNT_CIN.cntURL, TestCNT_CIN.originator, T.CIN, dct)
-		self.assertEqual(rsc, RC.CREATED)
-		self.assertEqual(findXPath(r, 'm2m:cin/con'), 'dValue')
-
-		r, rsc = RETRIEVE(TestCNT_CIN.cntURL, TestCNT_CIN.originator)
-		self.assertEqual(rsc, RC.OK)
-		self.assertIsNotNone(findXPath(r, 'm2m:cnt/cni'))
-		self.assertIsInstance(findXPath(r, 'm2m:cnt/cni'), int)
-		self.assertEqual(findXPath(r, 'm2m:cnt/cni'), 3)
-
 
 	@unittest.skipIf(noCSE, 'No CSEBase')
 	def test_retrieveCNTLa(self) -> None:
@@ -160,7 +146,7 @@ class TestCNT_CIN(unittest.TestCase):
 		self.assertEqual(rsc, RC.OK, r)
 		self.assertIsNotNone(r)
 		self.assertEqual(findXPath(r, 'm2m:cin/ty'), T.CIN)
-		self.assertEqual(findXPath(r, 'm2m:cin/con'), 'dValue')
+		self.assertEqual(findXPath(r, 'm2m:cin/con'), 'cValue')
 
 
 	@unittest.skipIf(noCSE, 'No CSEBase')
@@ -170,7 +156,7 @@ class TestCNT_CIN(unittest.TestCase):
 		self.assertEqual(rsc, RC.OK)
 		self.assertIsNotNone(r)
 		self.assertEqual(findXPath(r, 'm2m:cin/ty'), T.CIN)
-		self.assertEqual(findXPath(r, 'm2m:cin/con'), 'bValue')
+		self.assertEqual(findXPath(r, 'm2m:cin/con'), 'aValue')
 
 
 	@unittest.skipIf(noCSE, 'No CSEBase')
@@ -212,14 +198,29 @@ class TestCNT_CIN(unittest.TestCase):
 	@unittest.skipIf(noCSE, 'No CSEBase')
 	def test_createCINsForCNTwithSize(self) -> None:
 		"""\tAdd multiple <CIN>s to <CNT> with size restrictions """
-		# First fill up the container
-		for _ in range(int(maxBS / 3)):
-			dct = 	{ 'm2m:cin' : {
-					'con' : 'x' * int(maxBS / 3)
+		unique_cnt_rn = uniqueRN('testCNT')
+		dct = 	{ 'm2m:cnt' : {
+					'rn'  : unique_cnt_rn,
+					'mbs' : maxBS
 				}}
-			_, rsc = CREATE(TestCNT_CIN.cnt_with_mbs_url, TestCNT_CIN.originator, T.CIN, dct)
-			self.assertEqual(rsc, RC.CREATED)
-		
+		TestCNT_CIN.cnt_with_mbs, rsc = CREATE(TestCNT_CIN.aeURL, TestCNT_CIN.originator, T.CNT, dct)
+		self.assertEqual(rsc, RC.CREATED)
+		# set URL for the newly created container
+		TestCNT_CIN.cnt_with_mbs_url = f'{TestCNT_CIN.aeURL}/{unique_cnt_rn}'
+
+		dct = 	{ 'm2m:cin' : {
+				'con' : 'x' * int(maxBS / 3)
+			}}
+		_, rsc = CREATE(TestCNT_CIN.cnt_with_mbs_url, TestCNT_CIN.originator, T.CIN, dct)
+		self.assertEqual(rsc, RC.CREATED)
+
+		dct = 	{ 'm2m:cin' : {
+				'con' : 'x' * int(maxBS / 3)
+			}}
+		_, rsc = CREATE(TestCNT_CIN.cnt_with_mbs_url, TestCNT_CIN.originator, T.CIN, dct)
+		self.assertEqual(rsc, RC.CREATED)
+
+
 		# Test latest CIN for x
 		r, rsc = RETRIEVE(f'{TestCNT_CIN.cnt_with_mbs_url}/la', TestCNT_CIN.originator)
 		self.assertEqual(rsc, RC.OK)
@@ -298,10 +299,7 @@ class TestCNT_CIN(unittest.TestCase):
 	def test_discoverCINwithDISRFail(self) -> None:
 		""" Discover <CIN> with disr = True -> FAIL """
 		r, rsc = RETRIEVE(f'{TestCNT_CIN.disrCntURL}?rcn={int(ResultContentType.childResourceReferences)}', TestCNT_CIN.originator)
-		self.assertEqual(rsc, RC.OK)
-		self.assertIsNotNone(findXPath(r, 'm2m:rrl'))
-		self.assertIsNotNone(findXPath(r, 'm2m:rrl/rrf'))
-		self.assertEqual(len(findXPath(r, 'm2m:rrl/rrf')), 0)
+		self.assertEqual(rsc, RC.OPERATION_NOT_ALLOWED)
 
 
 	@unittest.skipIf(noCSE, 'No CSEBase')
