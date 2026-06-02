@@ -9,15 +9,18 @@
  */
 #pragma once
 
+#include <zerom2m/onem2m/types/primitives.h>
+#include <zerom2m/onem2m/types/primitives.h>
+#include <zerom2m/compat/types.h>
+#include <zerom2m/sqlite/sqlite3.h>
+
 #include <circle/string.h>
 #include <circle/types.h>
-#include <zerom2m/onem2m/types/primitives.h>
-
-#include <zerom2m/sqlite/sqlite3.h>
 
 namespace zerom2m::sqlite
 {
 using namespace zerom2m::onem2m::types;
+using namespace zerom2m::compat;
 
 class Database
 {
@@ -42,16 +45,16 @@ public:
     bool LoadPrimitiveContentByTarget(const CString &target, PrimitiveContent &out, CString &err);
 
     // Load direct children of a resource identified by target (ri, rn or pi/rn).
-    bool LoadPrimitiveContentChildren(const CString &target, 
-                                PrimitiveContentKind childrenKind,
-                                zerom2m::compat::Vector<CString> &out,
-                                CString &err);
+    bool LoadPrimitiveContentChildren(const CString       &target,
+                                      PrimitiveContentKind childrenKind,
+                                      Vector<CString>     &out,
+                                      CString             &err);
 
     // Load the latest child (by ct) of a resource identified by target (ri, rn or pi/rn).
-    bool LoadLatestChild(const CString &target,
-                     PrimitiveContentKind childrenKind,
-                     CString &outRi,
-                     CString &err);
+    bool LoadLatestChild(const CString       &target,
+                         PrimitiveContentKind childrenKind,
+                         CString             &outRi,
+                         CString             &err);
 
     // Get first CSEBase (if any)
     bool GetCSEBase(CSEBase &out, CString &err);
@@ -65,9 +68,9 @@ private:
     sqlite3 *db_ = nullptr;
 
     // helpers
-    static CString VecToPacked(const zerom2m::compat::Vector<CString> &v);
-    static void    PackedToVec(const CString &s, zerom2m::compat::Vector<CString> &out);
-    bool           InsertResources(const zerom2m::onem2m::types::ResourceBase &rbase, CString &err);
+    static CString VecToPacked(const Vector<CString> &v);
+    static void    PackedToVec(const CString &s, Vector<CString> &out);
+    bool           InsertResources(const ResourceBase &rbase, CString &err);
     CString        GetFullPathByRI(const CString &ri);
 };
 

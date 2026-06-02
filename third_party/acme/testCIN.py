@@ -118,6 +118,7 @@ class TestCIN(unittest.TestCase):
 		self.assertIsNotNone(findXPath(r, 'm2m:cin/con'))
 		self.assertEqual(findXPath(r, 'm2m:cin/con'), 'AnyValue')
 		self.assertGreater(findXPath(r, 'm2m:cin/cs'), 0)
+		self.assertIsNotNone(findXPath(r, 'm2m:cin/cs'))
 		self.assertIsNone(findXPath(r, 'm2m:cin/acpi'))
 
 
@@ -304,7 +305,7 @@ class TestCIN(unittest.TestCase):
 					'con' : 'AnyValue',
 					'acpi' : [ 'someACP' ]
 				}}
-		r, rsc = CREATE(cntURL, TestCIN.originator, T.CIN, dct)	
+		r, rsc = CREATE(TestCIN.cntURL_local, TestCIN.originator, T.CIN, dct)	
 		self.assertEqual(rsc, RC.BAD_REQUEST, r)
 
 
