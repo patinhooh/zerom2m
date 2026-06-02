@@ -64,9 +64,19 @@ static const char *kCreateContentInstance =
     "TEXT, cs INTEGER, conr TEXT, con BLOB, ontologyRef TEXT, dgt TEXT, dcnt INTEGER);";
 
 static const char *kCreateSubscription =
-    "CREATE TABLE IF NOT EXISTS subscription (ri TEXT PRIMARY KEY, enc TEXT, exc INTEGER, nu TEXT, "
-    "gpi TEXT, nfu TEXT, bn TEXT, rl TEXT, psn INTEGER, pn INTEGER, nsp INTEGER, ln INTEGER, nct "
-    "INTEGER, nec INTEGER, su TEXT, cr TEXT, gn TEXT, acrs TEXT);";
+    "CREATE TABLE IF NOT EXISTS subscription ("
+    "ri TEXT PRIMARY KEY, "
+    // EventNotificationCriteria (enc_)
+    "enc_cb TEXT, enc_ca TEXT, enc_ms TEXT, enc_us TEXT, enc_sts INTEGER, enc_stb INTEGER, "
+    "enc_eb TEXT, enc_ea TEXT, enc_labels TEXT, enc_sa INTEGER, enc_sb INTEGER, "
+    "enc_net TEXT, enc_chty TEXT, enc_atr TEXT, enc_fu INTEGER, enc_cfq TEXT, enc_cfs TEXT, enc_md INTEGER, "
+    // RateLimit (rtl_)
+    "rtl_max INTEGER, rtl_tw INTEGER, "
+    // BatchNotify (btn_)
+    "btn_num INTEGER, btn_dur TEXT, "
+    // Outros campos originais
+    "exc INTEGER, nu TEXT, gpi TEXT, nfu TEXT, psn INTEGER, pn INTEGER, nsp INTEGER, "
+    "ln INTEGER, nct INTEGER, nec INTEGER, su TEXT, cr TEXT, gn TEXT, acrs TEXT);";
 
 Database::Database() {}
 
@@ -180,6 +190,7 @@ CString Database::VecToPacked(const zerom2m::compat::Vector<CString> &v)
     return out;
 }
 
+
 void Database::PackedToVec(const CString &s, zerom2m::compat::Vector<CString> &out)
 {
     out.clear();
@@ -195,6 +206,45 @@ void Database::PackedToVec(const CString &s, zerom2m::compat::Vector<CString> &o
         }
     }
     if (s.GetLength() > 0) out.push_back(cur);
+}
+
+template <typename T>
+CString EnumVecToPacked(const zerom2m::compat::Vector<T> &v)
+{
+    CString out;
+
+    for (unsigned i = 0; i < v.GetCount(); ++i) {
+        if (i) out += (char)0x1F;
+
+        // converte enum para inteiro
+        out += CString(std::to_string(static_cast<u32>(v[i])).c_str());
+    }
+
+    return out;
+}
+
+template <typename T>
+void PackedToEnumVec(const CString &s, zerom2m::compat::Vector<T> &out)
+{
+    out.clear();
+    CString cur;
+
+    for (size_t i = 0; i < s.GetLength(); ++i) {
+        char c = s.c_str()[i];
+
+        if (c == (char)0x1F) {
+            if (!cur.IsEmpty()) {
+                out.push_back(static_cast<T>(std::stoi(cur.c_str())));
+                cur = CString();
+            }
+        } else {
+            char buf[2] = {c, '\0'};
+            cur += buf;
+        }
+    }
+
+    if (!cur.IsEmpty())
+        out.push_back(static_cast<T>(std::stoi(cur.c_str())));
 }
 
 static int bind_text_or_null(sqlite3_stmt *stmt, int idx, const CString &v)
@@ -563,54 +613,176 @@ bool Database::SaveSubscription(const Subscription &sub, CString &err)
         err = "DB not open";
         return false;
     }
+
     if (!InsertResources(sub, err)) return false;
+
     const char *sql =
-        "INSERT OR REPLACE INTO subscription (ri, enc, exc, nu, gpi, nfu, bn, rl, psn, pn, nsp, "
-        "ln, nct, nec, su, cr, gn, acrs) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);";
+        "INSERT OR REPLACE INTO subscription ("
+        "ri, "
+        "enc_cb, enc_ca, enc_ms, enc_us, enc_sts, enc_stb, "
+        "enc_eb, enc_ea, enc_labels, enc_sa, enc_sb, "
+        "enc_net, enc_chty, enc_atr, enc_fu, enc_cfq, enc_cfs, enc_md, "
+        "rtl_max, rtl_tw, "
+        "btn_num, btn_dur, "
+        "exc, nu, gpi, nfu, psn, pn, nsp, ln, nct, nec, su, cr, gn, acrs"
+        ") VALUES ("
+        "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?"
+        ");";
+
     sqlite3_stmt *stmt = nullptr;
-    int           rc   = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+    int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
         err = CString(sqlite3_errmsg(db_));
         return false;
     }
-    bind_text_or_null(stmt, 1, sub.resourceID);
-    bind_text_or_null(stmt, 2, CString());
-    if (sub.expirationCounter.has_value()) sqlite3_bind_int(stmt, 3, sub.expirationCounter.value());
-    else sqlite3_bind_null(stmt, 3);
+
+    int i = 1;
+
+    // -------------------------
+    // ri
+    // -------------------------
+    bind_text_or_null(stmt, i++, sub.resourceID);
+
+    // -------------------------
+    // enc (EventNotificationCriteria)
+    // -------------------------
+    const auto &enc = sub.eventNotificationCriteria;
+
+    bind_text_or_null(stmt, i++, enc.createdBefore);
+    bind_text_or_null(stmt, i++, enc.createdAfter);
+    bind_text_or_null(stmt, i++, enc.modifiedSince);
+    bind_text_or_null(stmt, i++, enc.unmodifiedSince);
+
+    if (enc.stateTagSmaller.has_value()) sqlite3_bind_int(stmt, i++, *enc.stateTagSmaller);
+    else sqlite3_bind_null(stmt, i++);
+
+    if (enc.stateTagBigger.has_value()) sqlite3_bind_int(stmt, i++, *enc.stateTagBigger);
+    else sqlite3_bind_null(stmt, i++);
+
+    bind_text_or_null(stmt, i++, enc.expireBefore);
+    bind_text_or_null(stmt, i++, enc.expireAfter);
+
+    bind_text_or_null(stmt, i++, VecToPacked(enc.labels));
+
+    if (enc.sizeAbove.has_value()) sqlite3_bind_int64(stmt, i++, *enc.sizeAbove);
+    else sqlite3_bind_null(stmt, i++);
+
+    if (enc.sizeBelow.has_value()) sqlite3_bind_int64(stmt, i++, *enc.sizeBelow);
+    else sqlite3_bind_null(stmt, i++);
+
+    bind_text_or_null(stmt, i++, EnumVecToPacked(enc.notificationEventType));
+    bind_text_or_null(stmt, i++, EnumVecToPacked(enc.childResourceType));
+    bind_text_or_null(stmt, i++, VecToPacked(enc.attributeList));
+
+    if (enc.filterUsage.has_value())
+        sqlite3_bind_int(stmt, i++, static_cast<int>(*enc.filterUsage));
+    else
+        sqlite3_bind_null(stmt, i++);
+
+    bind_text_or_null(stmt, i++, enc.contentFilterQuery);
+    bind_text_or_null(stmt, i++, enc.contentFilterSyntax);
+
+    if (enc.missingData.has_value())
+        sqlite3_bind_int(stmt, i++, *enc.missingData ? 1 : 0);
+    else
+        sqlite3_bind_null(stmt, i++);
+
+    // -------------------------
+    // rtl (RateLimit)
+    // -------------------------
+    if (sub.rateLimit.has_value()) {
+        if (sub.rateLimit->maxNrOfNotify.has_value())
+            sqlite3_bind_int(stmt, i++, *sub.rateLimit->maxNrOfNotify);
+        else
+            sqlite3_bind_null(stmt, i++);
+
+        if (sub.rateLimit->timeWindow.has_value())
+            sqlite3_bind_int(stmt, i++, *sub.rateLimit->timeWindow);
+        else
+            sqlite3_bind_null(stmt, i++);
+    } else {
+        sqlite3_bind_null(stmt, i++);
+        sqlite3_bind_null(stmt, i++);
+    }
+
+    // -------------------------
+    // btn (BatchNotify)
+    // -------------------------
+    if (sub.batchNotify.has_value()) {
+        sqlite3_bind_int(stmt, i++, sub.batchNotify->number);
+        bind_text_or_null(stmt, i++, sub.batchNotify->duration);
+    } else {
+        sqlite3_bind_null(stmt, i++);
+        sqlite3_bind_null(stmt, i++);
+    }
+
+    // -------------------------
+    // remaining Subscription fields
+    // -------------------------
+    if (sub.expirationCounter.has_value())
+        sqlite3_bind_int(stmt, i++, *sub.expirationCounter);
+    else
+        sqlite3_bind_null(stmt, i++);
+
     CString nu = VecToPacked(sub.notificationURI);
-    bind_text_or_null(stmt, 4, nu);
-    bind_text_or_null(stmt, 5, sub.groupID);
-    bind_text_or_null(stmt, 6, sub.notificationForwardingURI);
-    bind_text_or_null(stmt, 7, CString());
-    bind_text_or_null(stmt, 8, CString());
+    bind_text_or_null(stmt, i++, nu);
+
+    bind_text_or_null(stmt, i++, sub.groupID);
+    bind_text_or_null(stmt, i++, sub.notificationForwardingURI);
+
     if (sub.preSubscriptionNotify.has_value())
-        sqlite3_bind_int(stmt, 9, sub.preSubscriptionNotify.value());
-    else sqlite3_bind_null(stmt, 9);
+        sqlite3_bind_int(stmt, i++, *sub.preSubscriptionNotify);
+    else
+        sqlite3_bind_null(stmt, i++);
+
     if (sub.pendingNotification.has_value())
-        sqlite3_bind_int(stmt, 10, sub.pendingNotification.value());
-    else sqlite3_bind_null(stmt, 10);
+        sqlite3_bind_int(stmt, i++, *sub.pendingNotification);
+    else
+        sqlite3_bind_null(stmt, i++);
+
     if (sub.notificationStoragePriority.has_value())
-        sqlite3_bind_int(stmt, 11, sub.notificationStoragePriority.value());
-    else sqlite3_bind_null(stmt, 11);
-    if (sub.latestNotify.has_value()) sqlite3_bind_int(stmt, 12, sub.latestNotify.value() ? 1 : 0);
-    else sqlite3_bind_null(stmt, 12);
+        sqlite3_bind_int(stmt, i++, *sub.notificationStoragePriority);
+    else
+        sqlite3_bind_null(stmt, i++);
+
+    if (sub.latestNotify.has_value())
+        sqlite3_bind_int(stmt, i++, *sub.latestNotify ? 1 : 0);
+    else
+        sqlite3_bind_null(stmt, i++);
+
     if (sub.notificationContentType.has_value())
-        sqlite3_bind_int(stmt, 13, static_cast<int>(sub.notificationContentType.value()));
-    else sqlite3_bind_null(stmt, 13);
+        sqlite3_bind_int(stmt, i++, static_cast<int>(*sub.notificationContentType));
+    else
+        sqlite3_bind_null(stmt, i++);
+
     if (sub.notificationEventCat.has_value())
-        sqlite3_bind_int(stmt, 14, sub.notificationEventCat.value());
-    else sqlite3_bind_null(stmt, 14);
-    bind_text_or_null(stmt, 15, sub.subscriberURI);
-    bind_text_or_null(stmt, 16, sub.creator);
-    bind_text_or_null(stmt, 17, sub.groupName);
-    bind_text_or_null(stmt, 18, sub.associatedCrossResourceSub);
+        sqlite3_bind_int(stmt, i++, *sub.notificationEventCat);
+    else
+        sqlite3_bind_null(stmt, i++);
+
+    bind_text_or_null(stmt, i++, sub.subscriberURI);
+    bind_text_or_null(stmt, i++, sub.creator);
+    bind_text_or_null(stmt, i++, sub.groupName);
+    bind_text_or_null(stmt, i++, sub.associatedCrossResourceSub);
+
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
+
     if (rc != SQLITE_DONE) {
         err = CString(sqlite3_errmsg(db_));
         return false;
     }
+
     return true;
+}
+
+inline CString column_text_or_null(sqlite3_stmt *stmt, int &i)
+{
+    if (sqlite3_column_type(stmt, i) == SQLITE_NULL) {
+        ++i;
+        return CString();
+    }
+    return column_text_or_empty(stmt, i++);
 }
 
 // Minimal loader: find resource by ri, rn or pi/rn and populate PrimitiveContent for supported
@@ -845,42 +1017,215 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
             return false;
         }
         case ResourceType::Subscription: {
-            const char   *q   = "SELECT nu FROM subscription WHERE ri = ? LIMIT 1;";
-            sqlite3_stmt *s2  = nullptr;
-            int           rc2 = sqlite3_prepare_v2(db_, q, -1, &s2, nullptr);
+            const char *q =
+                "SELECT "
+                "enc_cb, enc_ca, enc_ms, enc_us, enc_sts, enc_stb, "
+                "enc_eb, enc_ea, enc_labels, enc_sa, enc_sb, "
+                "enc_net, enc_chty, enc_atr, enc_fu, enc_cfq, enc_cfs, enc_md, "
+                "rtl_max, rtl_tw, "
+                "btn_num, btn_dur, "
+                "exc, nu, gpi, nfu, psn, pn, nsp, ln, nct, nec, su, cr, gn, acrs "
+                "FROM subscription WHERE ri = ? LIMIT 1;";
+
+            sqlite3_stmt *s2 = nullptr;
+            int rc2 = sqlite3_prepare_v2(db_, q, -1, &s2, nullptr);
+
             if (rc2 != SQLITE_OK) {
                 err = CString(sqlite3_errmsg(db_));
                 return false;
             }
+
             sqlite3_bind_text(s2, 1, ri.c_str(), -1, SQLITE_TRANSIENT);
+
             rc2 = sqlite3_step(s2);
-            if (rc2 == SQLITE_ROW) {
-                Subscription s;
-                apply_common_resource_base(s,
-                                           ri,
-                                           rn,
-                                           pi,
-                                           ct,
-                                           lt,
-                                           et,
-                                           labels,
-                                           acpi,
-                                           custodian,
-                                           daci,
-                                           announceTo,
-                                           announcedAttribute,
-                                           hasAst,
-                                           ast);
-                s.resourceType = ResourceType::Subscription;
-                CString nu     = column_text_or_empty(s2, 0);
-                PackedToVec(nu, s.notificationURI);
-                out = s;
+            if (rc2 != SQLITE_ROW) {
                 sqlite3_finalize(s2);
-                return true;
+                err = "subscription row not found";
+                return false;
             }
+
+            // -------------------------
+            // FAIL-FAST: sanity check
+            // -------------------------
+            const int COLS = sqlite3_column_count(s2);
+            if (COLS < 34) {
+                sqlite3_finalize(s2);
+                err = "subscription schema mismatch";
+                return false;
+            }
+
+            Subscription s;
+
+            apply_common_resource_base(
+                s,
+                ri, rn, pi, ct, lt, et,
+                labels, acpi, custodian, daci,
+                announceTo, announcedAttribute,
+                hasAst, ast);
+
+            s.resourceType = ResourceType::Subscription;
+
+            int i = 0;
+
+            // -------------------------
+            // enc
+            // -------------------------
+            auto &enc = s.eventNotificationCriteria;
+            
+
+            enc.createdBefore   = column_text_or_null(s2, i);
+            enc.createdAfter    = column_text_or_null(s2, i);
+            enc.modifiedSince   = column_text_or_null(s2, i);
+            enc.unmodifiedSince = column_text_or_null(s2, i);
+
+            enc.stateTagSmaller = sqlite3_column_type(s2, i) != SQLITE_NULL
+                ? Optional<s32>(sqlite3_column_int(s2, i++))
+                : (++i, Optional<s32>{});
+
+            enc.stateTagBigger = sqlite3_column_type(s2, i) != SQLITE_NULL
+                ? Optional<s32>(sqlite3_column_int(s2, i++))
+                : (++i, Optional<s32>{});
+
+            enc.expireBefore = column_text_or_null(s2, i);
+            enc.expireAfter  = column_text_or_null(s2, i);
+
+            PackedToVec(column_text_or_empty(s2, i++), enc.labels);
+
+            enc.sizeAbove = sqlite3_column_type(s2, i) != SQLITE_NULL
+                ? Optional<s64>(sqlite3_column_int64(s2, i++))
+                : (++i, Optional<s64>{});
+
+            enc.sizeBelow = sqlite3_column_type(s2, i) != SQLITE_NULL
+                ? Optional<s64>(sqlite3_column_int64(s2, i++))
+                : (++i, Optional<s64>{});
+
+            PackedToEnumVec(column_text_or_empty(s2, i++), enc.notificationEventType);
+            PackedToEnumVec(column_text_or_empty(s2, i++), enc.childResourceType);
+            PackedToVec(column_text_or_empty(s2, i++), enc.attributeList);
+
+            if (sqlite3_column_type(s2, i) != SQLITE_NULL)
+                enc.filterUsage = (FilterUsage)sqlite3_column_int(s2, i++);
+            else
+                i++;
+
+            enc.contentFilterQuery  = column_text_or_null(s2, i);
+            enc.contentFilterSyntax = column_text_or_null(s2, i);
+
+            enc.missingData = sqlite3_column_type(s2, i) != SQLITE_NULL
+                ? Optional<boolean>(sqlite3_column_int(s2, i++) != 0)
+                : (++i, Optional<boolean>{});
+
+            // -------------------------
+            // VALIDATION (enc sanity)
+            // -------------------------
+            if (enc.stateTagSmaller.has_value() &&
+                enc.stateTagBigger.has_value() &&
+                *enc.stateTagSmaller > *enc.stateTagBigger)
+            {
+                sqlite3_finalize(s2);
+                err = "invalid state tag range in subscription";
+                return false;
+            }
+
+            // -------------------------
+            // rtl
+            // -------------------------
+            if (sqlite3_column_type(s2, i) != SQLITE_NULL ||
+                sqlite3_column_type(s2, i + 1) != SQLITE_NULL)
+            {
+                RateLimit rl;
+
+                if (sqlite3_column_type(s2, i) != SQLITE_NULL)
+                    rl.maxNrOfNotify = sqlite3_column_int(s2, i++);
+                else
+                    i++;
+
+                if (sqlite3_column_type(s2, i) != SQLITE_NULL)
+                    rl.timeWindow = sqlite3_column_int(s2, i++);
+                else
+                    i++;
+
+                if (rl.maxNrOfNotify.has_value() && *rl.maxNrOfNotify < 0) {
+                    sqlite3_finalize(s2);
+                    err = "invalid rate limit maxNrOfNotify";
+                    return false;
+                }
+
+                if (rl.timeWindow.has_value() && *rl.timeWindow <= 0) {
+                    sqlite3_finalize(s2);
+                    err = "invalid rate limit timeWindow";
+                    return false;
+                }
+
+                s.rateLimit = rl;
+            } else {
+                i += 2;
+            }
+
+            // -------------------------
+            // btn
+            // -------------------------
+            if (sqlite3_column_type(s2, i) != SQLITE_NULL) {
+                BatchNotify bn;
+
+                bn.number = sqlite3_column_int(s2, i++);
+                if (bn.number < 0) {
+                    sqlite3_finalize(s2);
+                    err = "invalid batch notify number";
+                    return false;
+                }
+
+                bn.duration = column_text_or_null(s2, i);
+                s.batchNotify = bn;
+            } else {
+                i += 2;
+            }
+
+            // -------------------------
+            // base fields
+            // -------------------------
+            s.expirationCounter = sqlite3_column_type(s2, i) != SQLITE_NULL
+                ? Optional<s32>(sqlite3_column_int(s2, i++))
+                : (++i, Optional<s32>{});
+
+            PackedToVec(column_text_or_empty(s2, i++), s.notificationURI);
+
+            s.groupID = column_text_or_null(s2, i);
+            s.notificationForwardingURI = column_text_or_null(s2, i);
+
+            s.preSubscriptionNotify = sqlite3_column_type(s2, i) != SQLITE_NULL
+                ? sqlite3_column_int(s2, i++)
+                : (++i, 0);
+
+            s.pendingNotification = sqlite3_column_type(s2, i) != SQLITE_NULL
+                ? (u8)sqlite3_column_int(s2, i++)
+                : (++i, 0);
+
+            s.notificationStoragePriority = sqlite3_column_type(s2, i) != SQLITE_NULL
+                ? sqlite3_column_int(s2, i++)
+                : (++i, 0);
+
+            s.latestNotify = sqlite3_column_type(s2, i) != SQLITE_NULL
+                ? sqlite3_column_int(s2, i++) != 0
+                : (++i, false);
+
+            s.notificationContentType = sqlite3_column_type(s2, i) != SQLITE_NULL
+                ? (NotificationContentType)sqlite3_column_int(s2, i++)
+                : (++i, NotificationContentType{});
+
+            s.notificationEventCat = sqlite3_column_type(s2, i) != SQLITE_NULL
+                ? (u8)sqlite3_column_int(s2, i++)
+                : (++i, 0);
+
+            s.subscriberURI = column_text_or_null(s2, i);
+            s.creator = column_text_or_null(s2, i);
+            s.groupName = column_text_or_null(s2, i);
+            s.associatedCrossResourceSub = column_text_or_null(s2, i);
+
             sqlite3_finalize(s2);
-            err = "subscription row not found";
-            return false;
+
+            out = s;
+            return true;
         }
         case ResourceType::CSEBase: {
             const char   *q   = "SELECT cst, csi, srt, srv, ctm, poa, ncp, nl, esi FROM cse WHERE ri = ? LIMIT 1;";
