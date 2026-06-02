@@ -776,15 +776,19 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
                 ci.resourceType = ResourceType::ContentInstance;
                 if (sqlite3_column_type(s2, 0) != SQLITE_NULL)
                     ci.stateTag = (u32)sqlite3_column_int(s2, 0);
-                ci.creator     = column_text_or_empty(s2, 1);
+
+                CString creator = column_text_or_empty(s2, 1);
+                if (creator.GetLength() != 0) ci.creator = creator;
                 ci.contentInfo = column_text_or_empty(s2, 2);
                 ci.contentSize = (s64)sqlite3_column_int64(s2, 3);
                 ci.contentRef  = column_text_or_empty(s2, 4);
                 if (sqlite3_column_type(s2, 5) != SQLITE_NULL) {
                     ci.content = column_text_or_empty(s2, 5);
                 }
-                ci.ontologyRef        = column_text_or_empty(s2, 6);
-                ci.dataGenerationTime = column_text_or_empty(s2, 7);
+                ci.ontologyRef = column_text_or_empty(s2, 6);
+                CString dgt    = column_text_or_empty(s2, 7);
+                if (dgt.GetLength() != 0) ci.dataGenerationTime = dgt;
+
                 if (sqlite3_column_type(s2, 8) != SQLITE_NULL)
                     ci.deletionCnt = (u32)sqlite3_column_int(s2, 8);
                 out = ci;
@@ -890,10 +894,10 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
 // caller can pass each entry to LoadPrimitiveContentByTarget to get the full
 // resource.  Returns false (with `err` set) only on a hard DB error; an
 // empty result set is not an error.
-bool Database::LoadPrimitiveContentChildren(const CString                    &target,
-                                            PrimitiveContentKind              childrenKind,
-                                            Vector<CString> &out,
-                                            CString                          &err)
+bool Database::LoadPrimitiveContentChildren(const CString       &target,
+                                            PrimitiveContentKind childrenKind,
+                                            Vector<CString>     &out,
+                                            CString             &err)
 {
     if (!db_) {
         err = "DB not open";

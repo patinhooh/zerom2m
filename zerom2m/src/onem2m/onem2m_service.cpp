@@ -1033,8 +1033,8 @@ ResponsePrimitive OneM2MService::CreateContentInstance(const ContentInstance  &c
         resp.responseStatusCode = ResponseStatusCode::NOT_FOUND;
         return resp;
     }
-    const Container *container = parent.GetIf<Container>();
-    if (!container) {
+    const Container *cnt = parent.GetIf<Container>();
+    if (!cnt) {
         CLogger::Get()->Write(
             "onem2m_service", LogNotice, "Create ContentInstance req without CNT parent");
         ResponsePrimitive bad;
@@ -1089,243 +1089,78 @@ ResponsePrimitive OneM2MService::CreateContentInstance(const ContentInstance  &c
     // Ensure contentSize is set (codec may have estimated it)
     if (r.contentSize <= 0) { r.contentSize = static_cast<s64>(r.content.GetLength()); }
 
-    // FIXME: me remove this
-    return ResponsePrimitive();
+    // Enforce max byte size per container, reject if new CIN cannot fit
+    if (cnt->maxByteSize.has_value()) {
+        s64 mbs          = *cnt->maxByteSize;
+        s64 currentBytes = cnt->currentByteSize;
 
-    // Policy checks against parent Container (mbs, mni) and potential eviction.
+        // XXX: This should just delete old CINs but delete is out of scope.
+        if (currentBytes + r.contentSize > mbs) {
+            ResponsePrimitive bad;
+            bad.responseStatusCode = ResponseStatusCode::NOT_ACCEPTABLE;
+            return bad;
+        }
+    }
 
-    // if (auto *cnt = parentPc.GetIf<Container>()) {
-    //     // FIXME: Implement DB query
+    // Enforce max number of instances (evict oldest if necessary)
+    if (cnt->maxNrOfInstances.has_value()) {
+        s64 desired = *cnt->maxNrOfInstances;
 
-    //     // Enforce max byte size per container: evict oldest CINs until new fits
-    //     if (cnt->maxByteSize.has_value()) {
-    //         s64 mbs          = *cnt->maxByteSize;
-    //         s64 currentBytes = cnt->currentByteSize;
-    //         CLogger::Get()->Write("onem2m_service",
-    //                               LogNotice,
-    //                               "MBS check parent='%s' currentBytes=%lld newSize=%lld
-    //                               mbs=%lld", cnt->resourceID.c_str(), currentBytes,
-    //                               r.contentSize,
-    //                               mbs);
+        // XXX: Has we have no updates or deletes, the current number of instances is just the count
+        // of existing CINs.
+        // s64 current = cnt->currentNrOfInstances;
+        Vector<CString> cinRIs;
+        CString         err;
+        db_.LoadPrimitiveContentChildren(
+            cnt->resourceID, PrimitiveContentKind::ContentInstance, cinRIs, err);
 
-    //         if (currentBytes + r.contentSize > mbs) {
-    //             // collect existing CINs for this container (resourceID and creationTime and
-    //             // size)
-    //             struct Cand2 {
-    //                 CString ri;
-    //                 CString ct;
-    //                 s64     size;
-    //             };
-    //             Vector<Cand2> cands;
-    //             // FIXME: Implement DB query that gets CINs for a specific container
-    //             for (unsigned ci = 0; ci < db_.GetCount(); ++ci) {
-    //                 const PrimitiveContent &child = db_[ci];
-    //                 if (const ContentInstance *cin = child.GetIf<ContentInstance>()) {
-    //                     if (cin->parentID.Compare(pcnt->resourceID) == 0) {
-    //                         Cand2 cc;
-    //                         cc.ri   = cin->resourceID;
-    //                         cc.ct   = cin->creationTime;
-    //                         cc.size = cin->contentSize;
-    //                         cands.push_back(cc);
-    //                     }
-    //                 }
-    //             }
-    //             // FIXME: WHYYYYY I SAID NO DELETES
-    //             // remove oldest until fits or run out
-    //             // find oldest by CT
-    //             while (currentBytes + r.contentSize > mbs && cands.GetCount() > 0) {
-    //                 unsigned oldestPos = 0;
-    //                 for (unsigned k = 1; k < cands.GetCount(); ++k) {
-    //                     if (cands[k].ct.Compare(cands[oldestPos].ct) < 0) oldestPos = k;
-    //                 }
-    //                 CString removeRi   = cands[oldestPos].ri;
-    //                 s64     removeSize = cands[oldestPos].size;
-    //                 CLogger::Get()->Write("onem2m_service",
-    //                                       LogNotice,
-    //                                       "Evicting CIN ri='%s' size=%lld to satisfy mbs",
-    //                                       removeRi.c_str(),
-    //                                       (long long)removeSize);
+        if (cinRIs.GetCount() + 1 > desired) {
+            // XXX: This should just delete old CINs until we are under the limit, but delete is out
+            // of scope. For now just reject if we would exceed the limit.
+            ResponsePrimitive bad;
+            bad.responseStatusCode = ResponseStatusCode::NOT_ACCEPTABLE;
+            return bad;
+        }
+    }
 
-    //                 // rebuild db_ skipping the to-be-removed CIN (by resourceID)
-    //                 Vector<PrimitiveContent> newdb;
-    //                 for (unsigned x = 0; x < db_.GetCount(); ++x) {
-    //                     const PrimitiveContent &pcx  = db_[x];
-    //                     const ContentInstance  *cinx = pcx.GetIf<ContentInstance>();
-    //                     if (cinx && cinx->resourceID.Compare(removeRi) == 0) continue;
-    //                     newdb.push_back(db_[x]);
-    //                 }
-    //                 db_ = newdb;
+    r.resourceType = ResourceType::ContentInstance;
+    r.parentID     = cnt->resourceID;
+    r.resourceID   = GetId();
+    if (r.resourceName.GetLength() == 0) {
+        CString rn;
+        rn.Format("cin%s", r.resourceID.c_str());
+        r.resourceName = rn;
+    }
+    if (!isValidResourceName(r.resourceName)) {
+        ResponsePrimitive bad;
+        bad.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
+        return bad;
+    }
 
-    //                 currentBytes -= removeSize;
+    // Populate times with default values, we dont have a real clock.
+    if (r.creationTime.GetLength() == 0) r.creationTime = "2026-01-01T00:00:00Z";
+    if (r.lastModifiedTime.GetLength() == 0) r.lastModifiedTime = r.creationTime;
+    if (!r.expirationTime.has_value()) r.expirationTime = CString("2027-01-01T00:00:00Z");
+    if (!r.stateTag.has_value()) r.stateTag = 0;
 
-    //                 // remove entry from cands list
-    //                 Vector<Cand2> newc;
-    //                 for (unsigned ci = 0; ci < cands.GetCount(); ++ci) {
-    //                     if (ci == oldestPos) continue;
-    //                     newc.push_back(cands[ci]);
-    //                 }
-    //                 cands = newc;
-    //             }
-    //             // FIXME: WHYYYY I SAID NO UPDATES EITHER
-    //             // After eviction attempts, update parent container counters
-    //             int updatedParentIdx = -1;
-    //             for (unsigned pi2 = 0; pi2 < db_.GetCount(); ++pi2) {
-    //                 const PrimitiveContent &cand2 = db_[pi2];
-    //                 if (const Container *pc = cand2.GetIf<Container>()) {
-    //                     if (pc->resourceID.Compare(pcnt->resourceID) == 0) {
-    //                         updatedParentIdx = static_cast<int>(pi2);
-    //                         break;
-    //                     }
-    //                 }
-    //             }
-    //             if (updatedParentIdx >= 0) {
-    //                 Container updated = *db_[updatedParentIdx].GetIf<Container>();
-    //                 // recompute counters
-    //                 s64 sum   = 0;
-    //                 s64 count = 0;
-    //                 for (unsigned ci = 0; ci < db_.GetCount(); ++ci) {
-    //                     const PrimitiveContent &child = db_[ci];
-    //                     if (const ContentInstance *cin = child.GetIf<ContentInstance>()) {
-    //                         if (cin->parentID.Compare(updated.resourceID) == 0) {
-    //                             sum += cin->contentSize;
-    //                             ++count;
-    //                         }
-    //                     }
-    //                 }
-    //                 updated.currentNrOfInstances = count;
-    //                 updated.currentByteSize      = sum;
-    //                 db_[updatedParentIdx]        = updated;
-    //                 pcnt                         = db_[updatedParentIdx].GetIf<Container>();
-    //                 currentBytes = sum; // update local cumulative size after eviction
-    //                 CLogger::Get()->Write("onem2m_service",
-    //                                       LogNotice,
-    //                                       "After eviction parent='%s' cni=%lld cbs=%lld",
-    //                                       updated.resourceID.c_str(),
-    //                                       (long long)updated.currentNrOfInstances,
-    //                                       (long long)updated.currentByteSize);
-    //             }
+    CString saveErr;
+    if (!db_.SaveContentInstance(r, saveErr)) {
+        CLogger::Get()->Write(
+            "onem2m_service", LogError, "CREATE ContentInstance save failed: %s", saveErr.c_str());
+        ResponsePrimitive resp;
+        resp.responseStatusCode = ResponseStatusCode::INTERNAL_SERVER_ERROR;
+        return resp;
+    }
+    CLogger::Get()->Write("onem2m_service",
+                          LogNotice,
+                          "Inserted ContentInstance: rn='%s' ri='%s' pi='%s'",
+                          r.resourceName.c_str(),
+                          r.resourceID.c_str(),
+                          r.parentID.c_str());
 
-    //             if (currentBytes + r.contentSize > mbs) {
-    //                 ResponsePrimitive bad;
-    //                 bad.responseStatusCode = ResponseStatusCode::NOT_ACCEPTABLE;
-    //                 return bad;
-    //             }
-    //         }
-    //     }
-
-    //     // Enforce max number of instances (evict oldest if necessary)
-    //     if (cnt->maxNrOfInstances.has_value()) {
-    //         s64 desired = *cnt->maxNrOfInstances;
-    //         s64 current = cnt->currentNrOfInstances;
-    //         if (current + 1 > desired) {
-    //             // FIXME: Implement DB query that gets CINs for a specific container
-    //             // collect existing CINs for this container
-    //             struct Cand {
-    //                 unsigned idx;
-    //                 CString  ct;
-    //                 s64      size;
-    //             };
-    //             Vector<Cand> cands;
-    //             for (unsigned ci = 0; ci < db_.GetCount(); ++ci) {
-    //                 const PrimitiveContent &child = db_[ci];
-    //                 if (const ContentInstance *cin = child.GetIf<ContentInstance>()) {
-    //                     if (cin->parentID.Compare(cnt->resourceID) == 0) {
-    //                         Cand cc;
-    //                         cc.idx  = ci;
-    //                         cc.ct   = cin->creationTime;
-    //                         cc.size = cin->contentSize;
-    //                         cands.push_back(cc);
-    //                     }
-    //                 }
-    //             }
-    //             // sort candidates by creationTime asc (oldest first) - simple selection
-    //             // removal
-    //             while (cnt->currentNrOfInstances + 1 > desired && cands.GetCount() > 0) {
-    //                 // find oldest index in cands
-    //                 unsigned oldestPos = 0;
-    //                 for (unsigned k = 1; k < cands.GetCount(); ++k) {
-    //                     if (cands[k].ct.Compare(cands[oldestPos].ct) < 0) oldestPos = k;
-    //                 }
-    //                 unsigned removeDbIdx = cands[oldestPos].idx;
-
-    //                 // rebuild db_ skipping the to-be-removed CIN
-    //                 Vector<PrimitiveContent> newdb;
-    //                 for (unsigned x = 0; x < db_.GetCount(); ++x) {
-    //                     if (x == removeDbIdx) continue;
-    //                     newdb.push_back(db_[x]);
-    //                 }
-    //                 db_ = newdb;
-
-    //                 // adjust container counters (find parent again)
-    //                 // (we will search and update below after loop; recreate candidate
-    //                 // list) rebuild candidate list for next iteration
-    //                 cands.clear();
-    //                 for (unsigned ci = 0; ci < db_.GetCount(); ++ci) {
-    //                     const PrimitiveContent &child = db_[ci];
-    //                     if (const ContentInstance *cin = child.GetIf<ContentInstance>()) {
-    //                         if (cin->parentID.Compare(pcnt->resourceID) == 0) {
-    //                             Cand cc;
-    //                             cc.idx  = ci;
-    //                             cc.ct   = cin->creationTime;
-    //                             cc.size = cin->contentSize;
-    //                             cands.push_back(cc);
-    //                         }
-    //                     }
-    //                 }
-    //                 // update pointer to parent container (its index may have shifted)
-    //                 parentIdx = -1;
-    //                 for (unsigned pi = 0; pi < db_.GetCount(); ++pi) {
-    //                     const PrimitiveContent &cand = db_[pi];
-    //                     if (const Container *pc = cand.GetIf<Container>()) {
-    //                         if (pc->resourceID.Compare(r.parentID) == 0) {
-    //                             parentIdx = static_cast<int>(pi);
-    //                             break;
-    //                         }
-    //                     }
-    //                 }
-    //                 if (parentIdx >= 0) {
-    //                     // decrement counters based on the removed CIN
-    //                     Container updated            = *db_[parentIdx].GetIf<Container>();
-    //                     updated.currentNrOfInstances = static_cast<s64>(cands.GetCount());
-    //                     // recompute currentByteSize
-    //                     s64 sum = 0;
-    //                     for (unsigned ci = 0; ci < db_.GetCount(); ++ci) {
-    //                         const PrimitiveContent &child = db_[ci];
-    //                         if (const ContentInstance *cin = child.GetIf<ContentInstance>()) {
-    //                             if (cin->parentID.Compare(updated.resourceID) == 0)
-    //                                 sum += cin->contentSize;
-    //                         }
-    //                     }
-    //                     updated.currentByteSize = sum;
-    //                     db_[parentIdx]          = updated;
-    //                     pcnt                    = db_[parentIdx].GetIf<Container>();
-    //                 } else {
-    //                     break;
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-
-    // // FIXME: updates?
-    // // If we created a ContentInstance, update parent Container counters (cni, cbs)
-    // if (const ContentInstance *newCin = pc.GetIf<ContentInstance>()) {
-    //     find parent container entry and update
-    //     for (unsigned pi = 0; pi < db_.GetCount(); ++pi) {
-    //         PrimitiveContent &cand = db_[pi];
-    //         if (Container *pcnt = const_cast<Container *>(cand.GetIf<Container>())) {
-    //             if (pcnt->resourceID.Compare(newCin->parentID) == 0) {
-    //                 Container updated = *pcnt;
-    //                 updated.currentNrOfInstances += 1;
-    //                 updated.currentByteSize += newCin->contentSize;
-    //                 db_[pi] = updated;
-    //                 break;
-    //             }
-    //         }
-    //     }
-    // }
-
-    // pc = r;
+    PrimitiveContent pc;
+    pc = r;
+    return makeResponse(req, ResponseStatusCode::CREATED, pc);
 }
 
 ResponsePrimitive OneM2MService::CreateSubscription(const Subscription     &sub,
@@ -1578,7 +1413,7 @@ ResponsePrimitive OneM2MService::Retrieve(const RequestPrimitive &request)
     return resp;
 }
 
-ResponsePrimitive OneM2MService::RetrieveCSE(const RequestPrimitive &request,
+ResponsePrimitive OneM2MService::RetrieveCSE(const RequestPrimitive &req,
                                              const CSEBase          &cse,
                                              const CString          &target)
 {
@@ -1594,29 +1429,29 @@ ResponsePrimitive OneM2MService::RetrieveCSE(const RequestPrimitive &request,
         resp.responseStatusCode = ResponseStatusCode::NOT_FOUND;
         return resp;
     }
-    if (request.from.Compare("CAdmin") != 0) {
+    if (req.from.Compare("CAdmin") != 0) {
         resp.responseStatusCode = ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
         return resp;
     }
     PrimitiveContent out;
     out = cse;
-    return makeResponse(request, ResponseStatusCode::OK, out);
+    return makeResponse(req, ResponseStatusCode::OK, out);
 }
 
 ResponsePrimitive
-OneM2MService::RetrieveAE(const RequestPrimitive &request, const AE &ae, const CString &target)
+OneM2MService::RetrieveAE(const RequestPrimitive &req, const AE &ae, const CString &target)
 {
     ResponsePrimitive resp;
     if (!MatchesResourceTarget(db_, ae, target)) {
         resp.responseStatusCode = ResponseStatusCode::NOT_FOUND;
         return resp;
     }
-    if (request.from.GetLength() == 0 || ae.aeID.GetLength() == 0 ||
-        request.from.Compare(ae.aeID) != 0) {
+    if (req.from.GetLength() == 0 || ae.aeID.GetLength() == 0 ||
+        req.from.Compare(ae.aeID) != 0) {
         CLogger::Get()->Write("onem2m_service",
                               LogNotice,
                               "from='%s' aeID='%s'",
-                              request.from.c_str(),
+                              req.from.c_str(),
                               ae.aeID.c_str());
         resp.responseStatusCode = ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
         return resp;
@@ -1624,10 +1459,10 @@ OneM2MService::RetrieveAE(const RequestPrimitive &request, const AE &ae, const C
 
     PrimitiveContent out;
     out = ae;
-    return makeResponse(request, ResponseStatusCode::OK, out);
+    return makeResponse(req, ResponseStatusCode::OK, out);
 }
 
-ResponsePrimitive OneM2MService::RetrieveContainer(const RequestPrimitive &request,
+ResponsePrimitive OneM2MService::RetrieveContainer(const RequestPrimitive &req,
                                                    const Container        &con,
                                                    const CString          &target)
 {
@@ -1638,7 +1473,7 @@ ResponsePrimitive OneM2MService::RetrieveContainer(const RequestPrimitive &reque
         return resp;
     }
 
-    if (!IsAllowedForContainer(request, db_, con)) {
+    if (!IsAllowedForContainer(req, db_, con)) {
         resp.responseStatusCode = ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
         return resp;
     }
@@ -1670,10 +1505,10 @@ ResponsePrimitive OneM2MService::RetrieveContainer(const RequestPrimitive &reque
 
     PrimitiveContent out;
     out = con;
-    return makeResponse(request, ResponseStatusCode::OK, out);
+    return makeResponse(req, ResponseStatusCode::OK, out);
 }
 
-ResponsePrimitive OneM2MService::RetrieveContentInstance(const RequestPrimitive &request,
+ResponsePrimitive OneM2MService::RetrieveContentInstance(const RequestPrimitive &req,
                                                          const ContentInstance  &cin,
                                                          const CString          &target)
 {
@@ -1683,29 +1518,56 @@ ResponsePrimitive OneM2MService::RetrieveContentInstance(const RequestPrimitive 
         return resp;
     }
 
-    if (cin.parentID.GetLength() != 0) {
-        PrimitiveContent parentPc;
-        CString          loadErr;
-        if (db_.LoadPrimitiveContentByTarget(cin.parentID, parentPc, loadErr)) {
-            if (const Container *parentCnt = parentPc.GetIf<Container>()) {
-                if (parentCnt->disableRetrieval.has_value() && *parentCnt->disableRetrieval) {
-                    resp.responseStatusCode = ResponseStatusCode::OPERATION_NOT_ALLOWED;
-                    return resp;
-                }
-                if (!IsAllowedForContainer(request, db_, *parentCnt)) {
-                    resp.responseStatusCode = ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
-                    return resp;
-                }
-            }
-        }
+    PrimitiveContent parentPc;
+    CString          loadErr;
+    if (cin.parentID.GetLength() == 0 ||
+        !db_.LoadPrimitiveContentByTarget(cin.parentID, parentPc, loadErr)) {
+        CLogger::Get()->Write("onem2m_service",
+                              LogError,
+                              "Failed to load parent container for CIN '%s': %s",
+                              cin.resourceID.c_str(),
+                              loadErr.c_str());
+        resp.responseStatusCode = ResponseStatusCode::NOT_FOUND;
+        return resp;
+    }
+
+    const Container *cnt = parentPc.GetIf<Container>();
+    if (!cnt) {
+        CLogger::Get()->Write(
+            "onem2m_service", LogError, "Parent resource of CIN is not a container as expected");
+        resp.responseStatusCode = ResponseStatusCode::INTERNAL_SERVER_ERROR;
+        return resp;
+    }
+
+    if (cnt->disableRetrieval.has_value() && *cnt->disableRetrieval) {
+        resp.responseStatusCode = ResponseStatusCode::OPERATION_NOT_ALLOWED;
+        return resp;
+    }
+    if (!IsAllowedForContainer(req, db_, *cnt)) {
+        resp.responseStatusCode = ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
+        return resp;
+    }
+
+    if (cnt->accessControlPolicyIDs.empty() && !cin.accessControlPolicyIDs.empty()) {
+        ResponsePrimitive resp;
+        resp.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
+        return resp;
+    }
+
+
+    // XXX: we do not support policy-based access control
+    if (!cin.accessControlPolicyIDs.empty()) {
+        ResponsePrimitive resp;
+        resp.responseStatusCode = ResponseStatusCode::NOT_IMPLEMENTED;
+        return resp;
     }
 
     PrimitiveContent out;
     out = cin;
-    return makeResponse(request, ResponseStatusCode::OK, out);
+    return makeResponse(req, ResponseStatusCode::OK, out);
 }
 
-ResponsePrimitive OneM2MService::RetrieveSubscription(const RequestPrimitive &request,
+ResponsePrimitive OneM2MService::RetrieveSubscription(const RequestPrimitive &req,
                                                       const Subscription     &sub,
                                                       const CString          &target)
 {
@@ -1714,13 +1576,13 @@ ResponsePrimitive OneM2MService::RetrieveSubscription(const RequestPrimitive &re
         resp.responseStatusCode = ResponseStatusCode::NOT_FOUND;
         return resp;
     }
-    if (!sub.creator.has_value() || request.from.Compare(*sub.creator) != 0) {
+    if (!sub.creator.has_value() || req.from.Compare(*sub.creator) != 0) {
         resp.responseStatusCode = ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
         return resp;
     }
     PrimitiveContent out;
     out = sub;
-    return makeResponse(request, ResponseStatusCode::OK, out);
+    return makeResponse(req, ResponseStatusCode::OK, out);
 }
 
 ResponsePrimitive OneM2MService::Update(const RequestPrimitive &request)
