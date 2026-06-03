@@ -28,6 +28,7 @@ const char FromHttpServer[] = "http_server";
 } // namespace
 
 HttpServer::HttpServer(CNetSubSystem      *net,
+                       HttpAdapter        *httpBinding,
                        CActLED            *led,
                        const SystemConfig *config,
                        CSocket            *socket)
@@ -42,15 +43,15 @@ HttpServer::HttpServer(CNetSubSystem      *net,
     , config_(config)
     , router_()
     , indexHandler_(config)
-    , httpAdapter_()
+    , httpAdapter_(httpBinding)
 {
     // Register handlers for different routes.
-    router_.Register(http::RequestMethod::GET, "/*", &httpAdapter_);
-    router_.Register(http::RequestMethod::POST, "/*", &httpAdapter_);
-    // XXX: Added PUT and DELETE for completeness, even though they are not currently supported by the
-    // service.
-    router_.Register(http::RequestMethod::PUT, "/*", &httpAdapter_);
-    router_.Register(http::RequestMethod::DELETE, "/*", &httpAdapter_);
+    router_.Register(http::RequestMethod::GET, "/*", httpAdapter_);
+    router_.Register(http::RequestMethod::POST, "/*", httpAdapter_);
+    // XXX: Added PUT and DELETE for completeness, even though they are not currently supported by
+    // the service.
+    router_.Register(http::RequestMethod::PUT, "/*", httpAdapter_);
+    router_.Register(http::RequestMethod::DELETE, "/*", httpAdapter_);
     // TODO: Move this index info into an AE from the node it self resource and serve it from
     // there
     router_.Register(http::RequestMethod::GET, "/", &indexHandler_);

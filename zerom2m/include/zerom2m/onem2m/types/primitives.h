@@ -28,25 +28,6 @@ namespace zerom2m::onem2m::types
 
 using namespace zerom2m::compat;
 
-// A child resource reference as returned in "attributes and child resource references"
-struct ChildResourceRef {
-    CString                name;               // nm
-    ResourceType           type;               // typ
-    CString                value;              // val  (CSE-relative URI)
-    Optional<ResourceType> specializationType; // spty
-};
-
-// Aggregated notification wrapper
-struct AggregatedNotification {
-    // array of serialized notification objects
-    Vector<CString> notifications; // sgn[]
-};
-
-// Generic response wrappers used in pc on responses
-struct URIList {
-    Vector<CString> uris; // uril
-};
-
 // FilterCriteria (fc), Table 8.2.5-1 + TS-0001 clause 8
 struct GeoQuery {
     Optional<u8>      geometryType;       // gmty
@@ -109,9 +90,7 @@ enum class PrimitiveContentKind : u8 {
     PollingChannel,
     Node,
     FlexContainer,
-    URIList,
-    AggregatedNotification,
-    ChildResourceRefs,
+    Notification,
 };
 
 struct PrimitiveContent {
@@ -139,6 +118,9 @@ struct PrimitiveContent {
                 break;
             case PrimitiveContentKind::ContentInstance:
                 data_ = new ContentInstance(*static_cast<ContentInstance *>(other.data_));
+                break;
+            case PrimitiveContentKind::Notification:
+                data_ = new Notification(*static_cast<Notification *>(other.data_));
                 break;
             case PrimitiveContentKind::Group:
                 data_ = new Group(*static_cast<Group *>(other.data_));
@@ -182,17 +164,6 @@ struct PrimitiveContent {
             case PrimitiveContentKind::FlexContainer:
                 data_ = new FlexContainer(*static_cast<FlexContainer *>(other.data_));
                 break;
-            case PrimitiveContentKind::URIList:
-                data_ = new URIList(*static_cast<URIList *>(other.data_));
-                break;
-            case PrimitiveContentKind::AggregatedNotification:
-                data_ =
-                    new AggregatedNotification(*static_cast<AggregatedNotification *>(other.data_));
-                break;
-            case PrimitiveContentKind::ChildResourceRefs:
-                data_ = new Vector<ChildResourceRef>(
-                    *static_cast<Vector<ChildResourceRef> *>(other.data_));
-                break;
             case PrimitiveContentKind::None:
             default:
                 data_ = nullptr;
@@ -217,6 +188,8 @@ struct PrimitiveContent {
     { return Set(value, PrimitiveContentKind::Container); }
     PrimitiveContent &operator=(const ContentInstance &value)
     { return Set(value, PrimitiveContentKind::ContentInstance); }
+    PrimitiveContent &operator=(const Notification &value)
+    { return Set(value, PrimitiveContentKind::Notification); }
     PrimitiveContent &operator=(const Group &value)
     { return Set(value, PrimitiveContentKind::Group); }
     PrimitiveContent &operator=(const Subscription &value)
@@ -245,12 +218,6 @@ struct PrimitiveContent {
     { return Set(value, PrimitiveContentKind::Node); }
     PrimitiveContent &operator=(const FlexContainer &value)
     { return Set(value, PrimitiveContentKind::FlexContainer); }
-    PrimitiveContent &operator=(const URIList &value)
-    { return Set(value, PrimitiveContentKind::URIList); }
-    PrimitiveContent &operator=(const AggregatedNotification &value)
-    { return Set(value, PrimitiveContentKind::AggregatedNotification); }
-    PrimitiveContent &operator=(const Vector<ChildResourceRef> &value)
-    { return Set(value, PrimitiveContentKind::ChildResourceRefs); }
 
     bool                 empty() const { return kind_ == PrimitiveContentKind::None; }
     PrimitiveContentKind kind() const { return kind_; }
@@ -265,6 +232,9 @@ struct PrimitiveContent {
         } else if constexpr (is_same_v<T, ContentInstance>) {
             return kind_ == PrimitiveContentKind::ContentInstance ? static_cast<const T *>(data_)
                                                                   : nullptr;
+        } else if constexpr (is_same_v<T, Notification>) {
+            return kind_ == PrimitiveContentKind::Notification ? static_cast<const T *>(data_)
+                                                               : nullptr;
         } else if constexpr (is_same_v<T, Group>) {
             return kind_ == PrimitiveContentKind::Group ? static_cast<const T *>(data_) : nullptr;
         } else if constexpr (is_same_v<T, Subscription>) {
@@ -304,15 +274,6 @@ struct PrimitiveContent {
         } else if constexpr (is_same_v<T, FlexContainer>) {
             return kind_ == PrimitiveContentKind::FlexContainer ? static_cast<const T *>(data_)
                                                                 : nullptr;
-        } else if constexpr (is_same_v<T, URIList>) {
-            return kind_ == PrimitiveContentKind::URIList ? static_cast<const T *>(data_) : nullptr;
-        } else if constexpr (is_same_v<T, AggregatedNotification>) {
-            return kind_ == PrimitiveContentKind::AggregatedNotification
-                       ? static_cast<const T *>(data_)
-                       : nullptr;
-        } else if constexpr (is_same_v<T, Vector<ChildResourceRef>>) {
-            return kind_ == PrimitiveContentKind::ChildResourceRefs ? static_cast<const T *>(data_)
-                                                                    : nullptr;
         } else {
             return nullptr;
         }
@@ -334,6 +295,9 @@ struct PrimitiveContent {
                 break;
             case PrimitiveContentKind::ContentInstance:
                 delete static_cast<ContentInstance *>(data_);
+                break;
+            case PrimitiveContentKind::Notification:
+                delete static_cast<Notification *>(data_);
                 break;
             case PrimitiveContentKind::Group:
                 delete static_cast<Group *>(data_);
@@ -376,15 +340,6 @@ struct PrimitiveContent {
                 break;
             case PrimitiveContentKind::FlexContainer:
                 delete static_cast<FlexContainer *>(data_);
-                break;
-            case PrimitiveContentKind::URIList:
-                delete static_cast<URIList *>(data_);
-                break;
-            case PrimitiveContentKind::AggregatedNotification:
-                delete static_cast<AggregatedNotification *>(data_);
-                break;
-            case PrimitiveContentKind::ChildResourceRefs:
-                delete static_cast<Vector<ChildResourceRef> *>(data_);
                 break;
             case PrimitiveContentKind::None:
             default:

@@ -11,12 +11,14 @@
 
 #include <zerom2m/compat/types.h>
 #include <zerom2m/onem2m/types/enums.h>
+#include <zerom2m/onem2m/types/primitives.h>
 
 namespace zerom2m::onem2m::types
 {
 
 using zerom2m::compat::Optional;
 using zerom2m::compat::Vector;
+struct PrimitiveContent;
 
 struct CustomAttribute {
     CString key;
@@ -330,6 +332,55 @@ struct FlexContainer : ResourceBase {
     Optional<u32>     stateTag;                 // st
     // Custom attributes specific to the FlexContainer definition
     Vector<CustomAttribute> customAttributes; // arbitrary short-named attrs
+};
+
+struct OperationMonitor {
+    Operation operation;  // op
+    CString   originator; // org
+};
+
+// notificationEvent (nev)
+struct NotificationEvent {
+    PrimitiveContent          *representation;        // rep
+    Optional<OperationMonitor> operationMonitor;      // om
+    NotificationEventType      notificationEventType; // net
+};
+
+// idr
+struct IPEDiscoveryRequest {
+    CString originator; // org
+
+    // TS-0004 says filterCriteria is mandatory
+    // You already have most of these fields in EventNotificationCriteria
+    EventNotificationCriteria filterCriteria; // fc
+};
+
+// m2m:notification (sgn)
+struct Notification {
+    Optional<NotificationEvent> notificationEvent; // nev
+
+    Optional<boolean> verificationRequest;  // vrq
+    Optional<boolean> subscriptionDeletion; // sud
+
+    CString subscriptionReference; // sur
+
+    Optional<CString> creator;                   // cr
+    Optional<CString> notificationForwardingURI; // nfu
+    Optional<CString> notificationTarget;        // ntt
+
+    Optional<boolean> targetRemovalRequest;   // trr
+    Optional<boolean> targetRemovalAllowance; // tra
+
+    Optional<IPEDiscoveryRequest> ipeDiscoveryRequest; // idr
+
+    Optional<boolean> aeRegistrationPointChange; // aerp
+    Optional<boolean> aeReferenceIDChange;       // aerid
+
+    Optional<CString> trackingID1; // tid1
+    Optional<CString> trackingID2; // tid2
+
+    // Present in newer releases
+    Optional<CString> subscribedTo; // st
 };
 
 } // namespace zerom2m::onem2m::types

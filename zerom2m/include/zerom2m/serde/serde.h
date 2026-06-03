@@ -64,6 +64,14 @@ public:
                                         const CString    &mimeType,
                                         RequestPrimitive &output) const;
 
+    boolean DeserializeResponseBody(const CString     &input,
+                                    const CString     &mimeType,
+                                    ResponsePrimitive &output) const;
+
+    boolean DeserializeResponsePrimitive(const CString     &input,
+                                         const CString     &mimeType,
+                                         ResponsePrimitive &output) const;
+
     /**
      * @brief Serialize a single resource (any concrete type, accessed via its base)
      * into a wire-format string.

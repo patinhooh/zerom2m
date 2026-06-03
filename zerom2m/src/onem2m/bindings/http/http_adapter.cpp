@@ -10,6 +10,7 @@
 #include "headers.h"
 
 #include <zerom2m/compat/types.h>
+#include <zerom2m/http/http_client.h>
 #include <zerom2m/onem2m/bindings/http/http_adapter.h>
 #include <zerom2m/onem2m/onem2m_service.h>
 #include <zerom2m/onem2m/types/enums.h>
@@ -27,15 +28,104 @@ using namespace zerom2m::onem2m::types;
 using namespace zerom2m::compat;
 using zerom2m::serde::SerDe;
 
+namespace
+{
+
+CString SliceCString(const char *start, size_t length)
+{
+    char *buf = new char[length + 1];
+    memcpy(buf, start, length);
+    buf[length] = '\0';
+    CString out(buf);
+    delete[] buf;
+    return out;
+}
+
+bool ParseIpv4Literal(const CString &text, CIPAddress &ip)
+{
+    const char *raw = text.c_str();
+    if (raw == nullptr || *raw == '\0') return false;
+
+    u8          octets[4] = {0, 0, 0, 0};
+    const char *p         = raw;
+    for (unsigned i = 0; i < 4; ++i) {
+        if (*p == '\0') return false;
+
+        char         *end   = nullptr;
+        unsigned long value = strtoul(p, &end, 10);
+        if (end == p || value > 255) return false;
+
+        octets[i] = static_cast<u8>(value);
+        if (i < 3) {
+            if (*end != '.') return false;
+            p = end + 1;
+        } else if (*end != '\0') {
+            return false;
+        }
+    }
+
+    ip.Set(octets);
+    return true;
+}
+
+bool ParseNotificationUrl(const CString &url, CIPAddress &ip, u16 &port, CString &path)
+{
+    const char *raw = url.c_str();
+    if (raw == nullptr) return false;
+
+    const char *scheme = strstr(raw, "://");
+    if (scheme == nullptr) return false;
+
+    const char *authority = scheme + 3;
+    const char *slash     = strchr(authority, '/');
+    const char *query     = nullptr;
+    if (slash != nullptr) { query = strchr(slash, '?'); }
+
+    CString hostPort;
+    if (slash != nullptr) {
+        hostPort = SliceCString(authority, static_cast<size_t>(slash - authority));
+    } else {
+        hostPort = authority;
+    }
+
+    CString     host;
+    CString     portText;
+    const char *colon = strchr(hostPort.c_str(), ':');
+    if (colon != nullptr) {
+        host     = SliceCString(hostPort.c_str(), static_cast<size_t>(colon - hostPort.c_str()));
+        portText = CString(colon + 1);
+    } else {
+        host = hostPort;
+    }
+
+    if (!ParseIpv4Literal(host, ip)) return false;
+
+    port = 80;
+    if (portText.GetLength() != 0) {
+        char         *end    = nullptr;
+        unsigned long parsed = strtoul(portText.c_str(), &end, 10);
+        if (end == portText.c_str() || *end != '\0' || parsed > 65535) return false;
+        port = static_cast<u16>(parsed);
+    }
+
+    if (slash != nullptr) {
+        if (query != nullptr) {
+            path = SliceCString(slash, static_cast<size_t>(query - slash));
+        } else {
+            path = slash;
+        }
+    } else {
+        path = "/";
+    }
+
+    return true;
+}
+
+} // namespace
+
 HttpResponse HttpAdapter::HandleRequest(const HttpRequest &req)
 {
-    CString path = StringViewToCString(req.Path);
-    CLogger::Get()->Write("http_adapter",
-                          LogNotice,
-                          "HTTP request method=%d path=%s bodyLength=%d",
-                          (int)req.Method,
-                          path.c_str(),
-                          (int)req.BodyLength);
+    CString path = req.Path;
 
     RequestPrimitive prim = decodeRequest(req);
 
@@ -46,8 +136,8 @@ HttpResponse HttpAdapter::HandleRequest(const HttpRequest &req)
         return encodeResponse(errResp, mime::JSON);
     }
 
-    CString mimeType = req.GetHeaderValue(ACCEPT);
-    if (mimeType.GetLength() == 0) mimeType = req.GetHeaderValue(CONTENT_TYPE);
+    CString mimeType = req.GetHeader("Accept");
+    if (mimeType.GetLength() == 0) mimeType = req.GetHeader("Content-Type");
     if (mimeType.GetLength() == 0) mimeType = mime::JSON;
 
     ResponsePrimitive resp = OneM2MService::Get().HandleRequest(prim);
@@ -55,11 +145,48 @@ HttpResponse HttpAdapter::HandleRequest(const HttpRequest &req)
 
     CLogger::Get()->Write("http_adapter",
                           LogNotice,
-                          "Responding rsc=%u http=%d",
+                          "Responding rsc=%u",
                           (unsigned)resp.responseStatusCode,
                           (int)out.Status);
 
     return out;
+}
+
+bool HttpAdapter::SendNotification(const RequestPrimitive &request, CNetSubSystem *net)
+{
+
+    CIPAddress ip;
+    u16        port = 0;
+    CString    path;
+    ParseNotificationUrl(request.to, ip, port, path);
+    // CLogger::Get()->Write("http_adapter",
+    //                       LogNotice,
+    //                       "Sending notification to %u.%u.%u.%u:%u%s",
+    //                       ip.Get()[0],
+    //                       ip.Get()[1],
+    //                       ip.Get()[2],
+    //                       ip.Get()[3],
+    //                       port,
+    //                       path.c_str());
+
+    const HttpRequest req = encodeRequest(request);
+    // CLogger::Get()->Write(
+    //     "http_adapter", LogNotice, "Sending notification:\n %s", req.Body.c_str());
+
+    if (net == nullptr) return false;
+    auto client = HttpClient(net, ip, port, SERVER_NAME, 2);
+
+    // XXX: Fire and forget for now, but we should handle failures and retries
+    HttpResponse resp;
+    client.Request(req, resp);
+    if (resp.Status != ResponseStatus::OK && resp.Status != ResponseStatus::Created) {
+        CLogger::Get()->Write("http_adapter",
+                              LogWarning,
+                              "Notification request failed with HTTP status %d",
+                              (int)resp.Status);
+        return false;
+    }
+    return true;
 }
 
 ParsedContentType HttpAdapter::parseContentType(const CString &ct)
@@ -96,19 +223,19 @@ ParsedContentType HttpAdapter::parseContentType(const CString &ct)
 void HttpAdapter::decodeRequestHeaders(const HttpRequest &r, RequestPrimitive &prim)
 {
     auto fetchHeader = [&](const char *name) -> Optional<CString> {
-        CString value = r.GetHeaderValue(name);
+        CString value = r.GetHeader(name);
         if (value.GetLength() == 0) { return Optional<CString>(); }
         return Optional<CString>(value);
     };
 
     auto fetchBoolHeader = [&](const char *name) -> Optional<boolean> {
-        CString value = r.GetHeaderValue(name);
+        CString value = r.GetHeader(name);
         if (value.GetLength() == 0) { return Optional<boolean>(); }
         return Optional<boolean>(value.Compare("1") == 0 || value.Compare("true") == 0);
     };
 
     auto fetchIntHeader = [&](const char *name) -> Optional<int> {
-        CString value = r.GetHeaderValue(name);
+        CString value = r.GetHeader(name);
         if (value.GetLength() == 0) { return Optional<int>(); }
 
         char         *end    = nullptr;
@@ -118,8 +245,8 @@ void HttpAdapter::decodeRequestHeaders(const HttpRequest &r, RequestPrimitive &p
         return Optional<int>(static_cast<int>(parsed));
     };
 
-    prim.from              = r.GetHeaderValue(ORIGIN);
-    prim.requestIdentifier = r.GetHeaderValue(REQUEST_ID);
+    prim.from              = r.GetHeader(ORIGIN);
+    prim.requestIdentifier = r.GetHeader(REQUEST_ID);
 
     prim.releaseVersionIndicator    = fetchHeader(RELEASE_VERSION);
     prim.originatingTimestamp       = fetchHeader(ORIG_TIMESTAMP);
@@ -152,7 +279,7 @@ void HttpAdapter::decodeRequestHeaders(const HttpRequest &r, RequestPrimitive &p
     if (ecVal) prim.eventCategory = static_cast<u8>(*ecVal);
 
     // Resource type: from Content-Type ;ty= OR X-M2M-TY header
-    CString ct = r.GetHeaderValue(CONTENT_TYPE);
+    CString ct = r.GetHeader(CONTENT_TYPE);
     if (ct.GetLength() != 0) {
         auto parsed = parseContentType(ct);
         if (parsed.ty) prim.resourceType = parsed.ty;
@@ -165,7 +292,7 @@ void HttpAdapter::decodeRequestHeaders(const HttpRequest &r, RequestPrimitive &p
 
 void HttpAdapter::decodeQueryParams(const HttpRequest &r, RequestPrimitive &prim)
 {
-    CString rcn = r.GetQueryParamValue(sn::prim::RESULT_CONTENT);
+    CString rcn = r.GetQuery(sn::prim::RESULT_CONTENT);
     if (rcn.GetLength() != 0) {
         char         *end    = nullptr;
         unsigned long parsed = strtoul(rcn.c_str(), &end, 10);
@@ -174,7 +301,7 @@ void HttpAdapter::decodeQueryParams(const HttpRequest &r, RequestPrimitive &prim
         }
     }
 
-    CString drt = r.GetQueryParamValue(sn::prim::DESIRED_IDENTIFIER_RESULT_TYPE);
+    CString drt = r.GetQuery(sn::prim::DESIRED_IDENTIFIER_RESULT_TYPE);
     if (drt.GetLength() != 0) {
         char         *end    = nullptr;
         unsigned long parsed = strtoul(drt.c_str(), &end, 10);
@@ -190,7 +317,7 @@ RequestPrimitive HttpAdapter::decodeRequest(const HttpRequest &r)
     RequestPrimitive prim;
 
     decodeRequestHeaders(r, prim);
-    prim.to = StringViewToCString(r.Path);
+    prim.to = r.Path;
 
     decodeQueryParams(r, prim);
 
@@ -209,10 +336,9 @@ RequestPrimitive HttpAdapter::decodeRequest(const HttpRequest &r)
     }
 
     // ---- Body -> PrimitiveContent --------------------------------------------
-    if (r.Body != nullptr && r.BodyLength > 0) {
-        StringView bodyView{reinterpret_cast<const char *>(r.Body), r.BodyLength};
-        CString    body        = StringViewToCString(bodyView);
-        CString    contentType = r.GetHeaderValue(CONTENT_TYPE);
+    if (r.Body.GetLength() > 0) {
+        CString body        = r.Body;
+        CString contentType = r.GetHeader(CONTENT_TYPE);
         SerDe::Get().DeserializeRequestBody(body, contentType, prim);
     }
 
@@ -264,12 +390,12 @@ HttpResponse HttpAdapter::encodeResponse(const ResponsePrimitive &rsp, const CSt
                               static_cast<unsigned>(rsp.responseStatusCode));
 
         out.Status = ResponseStatus::InternalServerError;
-        out.ClearBody();
+        out.Body   = "";
         return out;
     }
 
     if (body.GetLength() > 0) {
-        out.SetBody(body);
+        out.Body = body;
         out.AddHeader(CONTENT_TYPE, contentType);
     }
 
@@ -281,13 +407,13 @@ FilterCriteria HttpAdapter::filterCriteriaFromQuery(const HttpRequest &r)
     FilterCriteria fc;
 
     auto getStr = [&](const char *k) -> Optional<CString> {
-        CString v = r.GetQueryParamValue(k);
+        CString v = r.GetQuery(k);
         if (v.GetLength() == 0) return Optional<CString>();
         return Optional<CString>(v);
     };
 
     auto getInt32 = [&](const char *k) -> Optional<s32> {
-        CString v = r.GetQueryParamValue(k);
+        CString v = r.GetQuery(k);
         if (v.GetLength() == 0) return Optional<s32>();
         char         *end = nullptr;
         unsigned long p   = strtoul(v.c_str(), &end, 10);
@@ -296,7 +422,7 @@ FilterCriteria HttpAdapter::filterCriteriaFromQuery(const HttpRequest &r)
     };
 
     auto getInt64 = [&](const char *k) -> Optional<s64> {
-        CString v = r.GetQueryParamValue(k);
+        CString v = r.GetQuery(k);
         if (v.GetLength() == 0) return Optional<s64>();
         char         *end = nullptr;
         unsigned long p   = strtoul(v.c_str(), &end, 10);
@@ -324,10 +450,9 @@ FilterCriteria HttpAdapter::filterCriteriaFromQuery(const HttpRequest &r)
     fc.semanticsFilter     = getStr("smf");
 
     // multi-value keys
-    for (size_t i = 0; i < r.QueryParamCount; ++i) {
-        const QueryParam &p    = r.QueryParams[i];
-        CString           name = StringViewToCString(p.Name);
-        CString           val  = StringViewToCString(p.Value);
+    for (size_t i = 0; i < r.QueryNames.GetCount(); ++i) {
+        CString name = r.QueryNames[i];
+        CString val  = r.QueryValues[i];
         if (name == sn::attr::LABELS) fc.labels.push_back(val);
         if (name == sn::attr::RESOURCE_TYPE) {
             char         *end = nullptr;
@@ -337,21 +462,21 @@ FilterCriteria HttpAdapter::filterCriteriaFromQuery(const HttpRequest &r)
         }
     }
 
-    auto fu = r.GetQueryParamValue(sn::dt::fc::FILTER_USAGE);
+    auto fu = r.GetQuery(sn::dt::fc::FILTER_USAGE);
     if (fu.GetLength() != 0) {
         char         *end = nullptr;
         unsigned long v   = strtoul(fu.c_str(), &end, 10);
         if (end != fu.c_str()) fc.filterUsage = static_cast<FilterUsage>(static_cast<long>(v));
     }
 
-    auto fo = r.GetQueryParamValue(sn::dt::fc::FILTER_OPERATION);
+    auto fo = r.GetQuery(sn::dt::fc::FILTER_OPERATION);
     if (fo.GetLength() != 0) {
         char         *end = nullptr;
         unsigned long v   = strtoul(fo.c_str(), &end, 10);
         if (end != fo.c_str()) fc.filterOperation = static_cast<u8>(static_cast<unsigned>(v));
     }
 
-    auto chty = r.GetQueryParamValue("chty");
+    auto chty = r.GetQuery("chty");
     if (chty.GetLength() != 0) {
         char         *end = nullptr;
         unsigned long v   = strtoul(chty.c_str(), &end, 10);
@@ -526,25 +651,167 @@ ResponseStatus HttpAdapter::rscToHttpStatus(ResponseStatusCode rsc)
     }
 }
 
-// TODO: this would be neede for notifications if we implement client-side calls. For now it's
-// unused.
 HttpRequest HttpAdapter::encodeRequest(const RequestPrimitive &prim,
                                        const CString          &baseUrl,
                                        const CString          &acceptType)
 {
-    // TODO: implement outbound request encoding when client-side calls are needed
-    (void)prim;
-    (void)baseUrl;
-    (void)acceptType;
-    return HttpRequest{};
+    HttpRequest req;
+
+    req.Method = operationToMethod(prim.op);
+
+    // -------------------------
+    // Target resolution
+    // -------------------------
+    CString target = prim.to;
+    if (target.GetLength() == 0) { target = baseUrl; }
+
+    req.Target = target;
+
+    int q = target.Find('?');
+    if (q >= 0) {
+        for (int i = 0; i < q; ++i) {
+            req.Path += target.c_str()[i];
+        }
+
+        const char *queryStart = target.c_str() + q + 1;
+        req.Query              = queryStart;
+    } else {
+        req.Path = target;
+    }
+
+    // -------------------------
+    // Headers (IMPORTANT FIX)
+    // -------------------------
+
+    req.HeaderNames.push_back(ORIGIN);
+    req.HeaderValues.push_back(prim.from);
+    req.HeaderNames.push_back(REQUEST_ID);
+    req.HeaderValues.push_back(prim.requestIdentifier);
+
+    if (prim.releaseVersionIndicator) {
+        req.HeaderNames.push_back(RELEASE_VERSION);
+        req.HeaderValues.push_back(*prim.releaseVersionIndicator);
+    }
+    if (prim.originatingTimestamp) {
+        req.HeaderNames.push_back(ORIG_TIMESTAMP);
+        req.HeaderValues.push_back(*prim.originatingTimestamp);
+    }
+
+    if (prim.requestExpirationTimestamp) {
+        req.HeaderNames.push_back(REQ_EXP_TS);
+        req.HeaderValues.push_back(*prim.requestExpirationTimestamp);
+    }
+
+    if (prim.resultExpirationTimestamp) {
+        req.HeaderNames.push_back(RES_EXP_TS);
+        req.HeaderValues.push_back(*prim.resultExpirationTimestamp);
+    }
+
+    if (prim.operationExecutionTime) {
+        req.HeaderNames.push_back(OP_EXEC_TIME);
+        req.HeaderValues.push_back(*prim.operationExecutionTime);
+    }
+
+    if (prim.groupRequestIdentifier) {
+        req.HeaderNames.push_back(GROUP_REQ_ID);
+        req.HeaderValues.push_back(*prim.groupRequestIdentifier);
+    }
+
+    if (acceptType.GetLength() > 0) {
+        req.HeaderNames.push_back(ACCEPT);
+        req.HeaderValues.push_back(acceptType);
+    }
+
+    // -------------------------
+    // Content-Type
+    // -------------------------
+    CString contentType = acceptType;
+    if (contentType.GetLength() == 0) contentType = mime::JSON;
+
+    if (prim.op == Operation::Create && prim.resourceType) {
+        CString ct;
+        ct.Format("%s;ty=%d", contentType.c_str(), static_cast<int>(*prim.resourceType));
+        contentType = ct;
+    }
+
+    // -------------------------
+    // Body
+    // -------------------------
+    if (!prim.content.empty()) {
+        CString body;
+
+        if (SerDe::Get().SerializePrimitiveContent(prim.content, contentType, body)) {
+            req.HeaderNames.push_back(CONTENT_TYPE);
+            req.HeaderValues.push_back(contentType);
+            req.Body = body;
+        }
+    }
+
+    return req;
 }
+
 ResponsePrimitive HttpAdapter::decodeResponse(const HttpResponse &h,
                                               const CString      &requestIdentifier)
 {
-    // TODO: implement inbound response decoding when client-side calls are needed
-    (void)h;
-    (void)requestIdentifier;
-    return ResponsePrimitive{};
+    ResponsePrimitive rsp;
+
+    rsp.requestIdentifier = requestIdentifier;
+
+    auto fetchHeader = [&](const char *name) -> Optional<CString> {
+        const CString val = h.GetHeader(name);
+        if (val.GetLength() == 0) return Optional<CString>();
+        return Optional<CString>(val);
+    };
+
+    auto rscHdr = fetchHeader(RSC);
+
+    if (rscHdr) {
+        char *end = nullptr;
+
+        unsigned long v = strtoul(rscHdr->c_str(), &end, 10);
+
+        if (end != rscHdr->c_str())
+            rsp.responseStatusCode = static_cast<ResponseStatusCode>(static_cast<long>(v));
+    }
+
+    auto fr = fetchHeader(ORIGIN);
+    if (fr) rsp.from = *fr;
+
+    auto rvi = fetchHeader(RELEASE_VERSION);
+    if (rvi) rsp.releaseVersionIndicator = *rvi;
+
+    auto ot = fetchHeader(ORIG_TIMESTAMP);
+    if (ot) rsp.originatingTimestamp = *ot;
+
+    auto rst = fetchHeader(RES_EXP_TS);
+    if (rst) rsp.resultExpirationTimestamp = *rst;
+
+    auto vi = fetchHeader(VENDOR_INFO);
+    if (vi) rsp.vendorInformation = *vi;
+
+    auto su = fetchHeader(SERVICE_USER);
+    if (su) rsp.m2mServiceUser = *su;
+
+    auto ati = fetchHeader(ASSIGNED_TOKENS);
+    if (ati) rsp.assignedTokenIdentifiers = *ati;
+
+    auto tri = fetchHeader(TOKEN_REQ_INFO);
+    if (tri) rsp.tokenRequestInformation = *tri;
+
+    auto cl = fetchHeader(CONTENT_LOCATION);
+    if (cl) rsp.to = *cl;
+
+    if (h.Body.GetLength() > 0) {
+
+        CString contentType;
+
+        auto ct = fetchHeader(CONTENT_TYPE);
+        if (ct) contentType = *ct;
+        else contentType = mime::JSON;
+        SerDe::Get().DeserializeResponsePrimitive(h.Body, contentType, rsp);
+    }
+
+    return rsp;
 }
 
 } // namespace zerom2m::onem2m::bindings::http

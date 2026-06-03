@@ -47,16 +47,8 @@ public:
      */
     bool RequestHeadersOnly(const HttpRequest &request, HttpResponse &response);
 
-    bool Request(RequestMethod     method,
-                 const char       *path,
-                 const HttpHeader *headers,
-                 size_t            headerCount,
-                 const u8         *body,
-                 size_t            bodyLength,
-                 HttpResponse     &response);
-
     bool Get(const char *path, HttpResponse &response);
-    bool Post(const char *path, const u8 *body, size_t bodyLength, HttpResponse &response);
+    bool Post(const char *path, const CString &body, size_t bodyLength, HttpResponse &response);
 
     void SetTimeoutSeconds(unsigned timeoutSeconds);
 

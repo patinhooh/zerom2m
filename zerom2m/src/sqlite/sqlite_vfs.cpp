@@ -167,8 +167,8 @@ static const sqlite3_io_methods circleMethods = {
 static int circleOpen(
     sqlite3_vfs * /*pVfs*/, const char *zName, sqlite3_file *pFile, int flags, int *pOutFlags)
 {
-    CLogger::Get()->Write(
-        "vfs", LogNotice, "OPEN called: '%s' flags=0x%x", zName ? zName : "(null)", flags);
+    // CLogger::Get()->Write(
+    //     "vfs", LogNotice, "OPEN called: '%s' flags=0x%x", zName ? zName : "(null)", flags);
     CircleFile *f = toCircleFile(pFile);
     f->valid      = 0;
     // pMethods must be set even on failure so SQLite can call xClose safely
@@ -296,7 +296,7 @@ bool RegisterCircleVfs()
     int i = sqlite3_vfs_register(&circleVfs, 0);
 
     sqlite3_vfs *vfs = sqlite3_vfs_find("circle");
-    CLogger::Get()->Write("vfs", LogNotice, "VFS registered: %p", vfs);
+    CLogger::Get()->Write("vfs", LogNotice, "registered: %p", vfs);
 
     return i == SQLITE_OK;
 }

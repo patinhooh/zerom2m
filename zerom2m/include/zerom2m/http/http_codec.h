@@ -30,8 +30,8 @@ public:
      */
     static void SerializeRequest(const HttpRequest &request,
                                  CString           &outHeader,
-                                 const char        *host,
-                                 const char        *userAgent);
+                                 CString           &host,
+                                 CString           &userAgent);
 
     /**
      * @brief Serialize a HTTP response header block.

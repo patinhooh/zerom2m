@@ -38,6 +38,33 @@ public:
                                            RequestPrimitive &output) const = 0;
 
     /**
+     * @brief Deserialize a full RequestPrimitive envelope (all primitive fields + pc).
+     * @param input Raw request body (e.g. JSON string)
+     * @param output Partially-populated RequestPrimitive to fill in
+     * @return true on success, false on failure
+     */
+    virtual boolean DeserializeRequestPrimitive(const CString    &input,
+                                                RequestPrimitive &output) const = 0;
+
+    /**
+     * @brief Deserialize a full ResponsePrimitive envelope (status + pc + headers).
+     * @param input Raw response body (e.g. JSON string)
+     * @param output Partially-populated ResponsePrimitive to fill in
+     * @return true on success, false on failure
+     */
+    virtual boolean DeserializeResponseBody(const CString     &input,
+                                            ResponsePrimitive &output) const = 0;
+
+    /**
+     * @brief Deserialize a full ResponsePrimitive envelope (status + pc + headers).
+     * @param input Raw response body (e.g. JSON string)
+     * @param output Partially-populated ResponsePrimitive to fill in
+     * @return true on success, false on failure
+     */
+    virtual boolean DeserializeResponsePrimitive(const CString     &input,
+                                                 ResponsePrimitive &output) const = 0;
+
+    /**
      * @brief Serialize a single resource (any concrete type, accessed via its base)
      * into a wire-format string.
      * @param input Resource to serialize
@@ -63,15 +90,6 @@ public:
      */
     virtual boolean SerializeResponsePrimitive(const ResponsePrimitive &input,
                                                CString                 &output) const = 0;
-
-    /**
-     * @brief Deserialize a full RequestPrimitive envelope (all primitive fields + pc).
-     * @param input Raw request body (e.g. JSON string)
-     * @param output Partially-populated RequestPrimitive to fill in
-     * @return true on success, false on failure
-     */
-    virtual boolean DeserializeRequestPrimitive(const CString    &input,
-                                                RequestPrimitive &output) const = 0;
 };
 
 } // namespace zerom2m::serde

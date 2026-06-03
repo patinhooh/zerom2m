@@ -9,6 +9,8 @@
  */
 #pragma once
 
+#include <circle/types.h>
+
 namespace zerom2m::compat
 {
 

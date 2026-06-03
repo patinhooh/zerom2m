@@ -98,14 +98,9 @@ http::HttpResponse IndexHandler::HandleRequest(const http::HttpRequest &request)
         page = indexPage;
     }
 
-    static http::HttpHeader headers[] = {
-        {{"Content-Type", sizeof("Content-Type") - 1}, {"text/html", sizeof("text/html") - 1}},
-    };
+    response.AddHeader("Content-Type", "text/html");
 
-    response.Headers     = headers;
-    response.HeaderCount = 1;
-    response.Body        = (const u8 *)(const char *)page;
-    response.BodyLength  = page.GetLength();
+    response.Body = page;
     return response;
 }
 

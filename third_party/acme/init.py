@@ -1440,6 +1440,8 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 		self.send_header(C.hfOrigin, ORIGINATORNotifResp)
 		if C.hfRI in self.headers:
 			self.send_header(C.hfRI, self.headers[C.hfRI])
+		# Capture the RSC that will be sent back BEFORE resetting it
+		_rsc_sent = int(nextNotificationResult)
 		nextNotificationResult = ResponseStatusCode.OK
 
 		# Get headers and content data
@@ -1457,8 +1459,17 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 					setLastNotification(decoded_data := cbor2.loads(post_data))	# type:ignore [assignment, arg-type]
 
 		setLastNotificationHeaders(dict(self.headers))	# make a dict out of the headers
-		# make a dict out of the query arguments 
-		setLastNotificationArguments(parse_qs(urlparse(self.path).query))	# type:ignore[arg-type] 
+		# make a dict out of the query arguments
+		setLastNotificationArguments(parse_qs(urlparse(self.path).query))	# type:ignore[arg-type]
+
+		# --- reporter capture ---
+		reporter.record_notification(
+			url=self.path,
+			headers=dict(self.headers),
+			body=decoded_data if decoded_data != '' else None,
+			response_status=_rsc_sent,
+		)
+		# ---
 
 		# Verbose output
 		if verboseRequests and self.headers.get(C.hfOrigin):

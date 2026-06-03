@@ -133,6 +133,10 @@ enum class ResourceType : u32 {
     ServiceSubscribedUserProfile = 4018,
     SoftwareCampaign             = 4019,
 
+    // XXX: Notification does not have a ty value in the oneM2M spec, but we need it for internal
+    // handling
+    Notification = 10000,
+
     // Internal
     None = 0,
 };
@@ -357,30 +361,23 @@ enum class ResponseType : u8 {
 
 // NotificationContentType (nct)
 enum class NotificationContentType : u8 {
-    ModifiedAttributes = 1,
-    WholeResource      = 2,
-    ReferenceOnly      = 3,
-    TriggeringPayload  = 4,
-    SemanticSignalling = 5,
+    AllAttributes      = 1,
+    ModifiedAttributes = 2,
+    ResourceID         = 3,
+    TriggerPayload     = 4,
+    TimeSeries         = 5,
 };
 
 // NotificationEventType (net)
 enum class NotificationEventType : u8 {
-    UpdateOfResource                   = 1,
-    DeleteOfResource                   = 2,
-    CreateOfDirectChildResource        = 3,
-    DeleteOfDirectChildResource        = 4,
-    RetrieveOfContainerOldestValue     = 5,
-    TriggerReceivedForAE               = 6,
-    BlockingUpdate                     = 7,
-    MissingData                        = 8,
-    SemanticTrigger                    = 9,
-    TimeSyncNotification               = 10,
-    NotifyContainer                    = 11,
-    OperationExecutionEnded            = 12,
-    ReportOnGeneratedMissingDataPoints = 13,
-    CrossResourceSubscriptionCreation  = 14,
-    CrossResourceSubscriptionDeletion  = 15,
+    UpdateOfResource                               = 1,
+    DeleteOfResource                               = 2,
+    CreateOfDirectChildResource                    = 3,
+    DeleteOfDirectChildResource                    = 4,
+    RetrieveOfContainerResourceWithNoChildResource = 5,
+    TriggerReceivedForAEResource                   = 6,
+    BlockingUpdate                                 = 7,
+    ReportOnMissingDataPoints                      = 8
 };
 
 // MemberType (mt), for <group>

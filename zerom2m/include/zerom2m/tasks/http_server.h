@@ -35,12 +35,14 @@ public:
      * @brief Construct a new HttpServer instance
      *
      * @param net Pointer to the network subsystem
+     * @param httpBinding Reference to the HTTP adapter
      * @param led Pointer to the LED to control
      * @param config Pointer to the system configuration
      * @param socket Pointer to the socket for this instance.
      *               Pass nullptr for the first instance, which acts as the listener.
      */
     HttpServer(CNetSubSystem      *net,
+               HttpAdapter        *httpBinding,
                CActLED            *led,
                const SystemConfig *config,
                CSocket            *socket = nullptr);
@@ -53,7 +55,7 @@ private:
     Router              router_;
     // TODO: Move this index info into an AE from the node it self resource and serve it from there
     handlers::IndexHandler indexHandler_;
-    HttpAdapter            httpAdapter_;
+    HttpAdapter           *httpAdapter_;
 };
 
 } // namespace zerom2m::tasks

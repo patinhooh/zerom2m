@@ -35,19 +35,18 @@ static const char *kCreateResources = "CREATE TABLE IF NOT EXISTS resources ("
                                       "path TEXT" // EXTRA column for efficient lookup
                                       ");";
 
-static const char *kCreateCSE =
-    "CREATE TABLE IF NOT EXISTS cse ("
-    "ri  TEXT PRIMARY KEY,"
-    "cst INTEGER,"   // cseType
-    "csi TEXT,"      // cseID
-    "srt TEXT,"      // supportedResourceType (packed list of integers)
-    "srv TEXT,"      // supportedReleaseVersions (packed list)
-    "ctm TEXT,"      // currentTime
-    "poa TEXT,"      // pointOfAccess (packed list)
-    "ncp TEXT,"      // notifCongestionPolicy
-    "nl  TEXT,"      // nodeLink
-    "esi TEXT"       // e2eSecInfo
-    ");";
+static const char *kCreateCSE = "CREATE TABLE IF NOT EXISTS cse ("
+                                "ri  TEXT PRIMARY KEY,"
+                                "cst INTEGER," // cseType
+                                "csi TEXT,"    // cseID
+                                "srt TEXT,"    // supportedResourceType (packed list of integers)
+                                "srv TEXT,"    // supportedReleaseVersions (packed list)
+                                "ctm TEXT,"    // currentTime
+                                "poa TEXT,"    // pointOfAccess (packed list)
+                                "ncp TEXT,"    // notifCongestionPolicy
+                                "nl  TEXT,"    // nodeLink
+                                "esi TEXT"     // e2eSecInfo
+                                ");";
 
 static const char *kCreateAE =
     "CREATE TABLE IF NOT EXISTS ae (ri TEXT PRIMARY KEY, api TEXT, aei TEXT, apn TEXT, poa TEXT, "
@@ -69,14 +68,15 @@ static const char *kCreateSubscription =
     // EventNotificationCriteria (enc_)
     "enc_cb TEXT, enc_ca TEXT, enc_ms TEXT, enc_us TEXT, enc_sts INTEGER, enc_stb INTEGER, "
     "enc_eb TEXT, enc_ea TEXT, enc_labels TEXT, enc_sa INTEGER, enc_sb INTEGER, "
-    "enc_net TEXT, enc_chty TEXT, enc_atr TEXT, enc_fu INTEGER, enc_cfq TEXT, enc_cfs TEXT, enc_md INTEGER, "
+    "enc_net TEXT, enc_chty TEXT, enc_atr TEXT, enc_fu INTEGER, enc_cfq TEXT, enc_cfs TEXT, enc_md "
+    "INTEGER, "
     // RateLimit (rtl_)
     "rtl_max INTEGER, rtl_tw INTEGER, "
     // BatchNotify (btn_)
     "btn_num INTEGER, btn_dur TEXT, "
     // Outros campos originais
     "exc INTEGER, nu TEXT, gpi TEXT, nfu TEXT, psn INTEGER, pn INTEGER, nsp INTEGER, "
-    "ln INTEGER, nct INTEGER, nec INTEGER, su TEXT, cr TEXT, gn TEXT, acrs TEXT);";
+    "ln INTEGER, nct INTEGER, nec INTEGER, su TEXT, cr TEXT, crp INTEGER,gn TEXT, acrs TEXT);";
 
 Database::Database() {}
 
@@ -84,6 +84,8 @@ Database::~Database() { Close(); }
 
 bool Database::Open(const char *path, CString &err)
 {
+    CLogger::Get()->Write("database", LogNotice, "Opening DB at path: %s", path);
+
     // If the file exists but is zero bytes, remove it so SQLite can create a valid DB.
     {
         FILINFO finfo;
@@ -105,12 +107,6 @@ bool Database::Open(const char *path, CString &err)
         db_ = nullptr;
         return false;
     }
-    // NOTE: WAL is disabled at compile-time (SQLITE_OMIT_WAL).
-    // Project uses sqlite3_os_init() stub with Circle VFS.
-    // Transactional consistency is maintained via implicit journal (default).
-    int   rc;
-    char *ze = nullptr;
-
     // Set journal mode and synchronous BEFORE pager touches anything
     // Use DELETE journal and FULL synchronous to ensure SQLite calls xSync
     // (our circleSync calls `f_sync`) on commits so data reaches the media.
@@ -118,7 +114,6 @@ bool Database::Open(const char *path, CString &err)
     sqlite3_exec(db_, "PRAGMA page_size = 4096;", nullptr, nullptr, nullptr);
     sqlite3_exec(db_, "PRAGMA synchronous = FULL;", nullptr, nullptr, nullptr);
     sqlite3_exec(db_, "PRAGMA temp_store = MEMORY;", nullptr, nullptr, nullptr);
-    CLogger::Get()->Write("database", LogNotice, "DB opened successfully");
     return true;
 }
 
@@ -180,7 +175,7 @@ bool Database::InitSchema()
 }
 
 // lightweight packer: use unit separator 0x1F between entries
-CString Database::VecToPacked(const zerom2m::compat::Vector<CString> &v)
+CString Database::VecToPacked(const Vector<CString> &v)
 {
     CString out;
     for (unsigned i = 0; i < v.GetCount(); ++i) {
@@ -190,8 +185,7 @@ CString Database::VecToPacked(const zerom2m::compat::Vector<CString> &v)
     return out;
 }
 
-
-void Database::PackedToVec(const CString &s, zerom2m::compat::Vector<CString> &out)
+void Database::PackedToVec(const CString &s, Vector<CString> &out)
 {
     out.clear();
     CString cur;
@@ -208,23 +202,21 @@ void Database::PackedToVec(const CString &s, zerom2m::compat::Vector<CString> &o
     if (s.GetLength() > 0) out.push_back(cur);
 }
 
-template <typename T>
-CString EnumVecToPacked(const zerom2m::compat::Vector<T> &v)
+template <typename T> CString EnumVecToPacked(const Vector<T> &v)
 {
     CString out;
 
     for (unsigned i = 0; i < v.GetCount(); ++i) {
         if (i) out += (char)0x1F;
-
-        // converte enum para inteiro
-        out += CString(std::to_string(static_cast<u32>(v[i])).c_str());
+        CString format;
+        format.Format("%u", static_cast<u32>(v[i]));
+        out += format;
     }
 
     return out;
 }
 
-template <typename T>
-void PackedToEnumVec(const CString &s, zerom2m::compat::Vector<T> &out)
+template <typename T> void PackedToEnumVec(const CString &s, Vector<T> &out)
 {
     out.clear();
     CString cur;
@@ -233,8 +225,8 @@ void PackedToEnumVec(const CString &s, zerom2m::compat::Vector<T> &out)
         char c = s.c_str()[i];
 
         if (c == (char)0x1F) {
-            if (!cur.IsEmpty()) {
-                out.push_back(static_cast<T>(std::stoi(cur.c_str())));
+            if (cur.GetLength() != 0) {
+                out.push_back(static_cast<T>(atoi(cur.c_str())));
                 cur = CString();
             }
         } else {
@@ -243,8 +235,7 @@ void PackedToEnumVec(const CString &s, zerom2m::compat::Vector<T> &out)
         }
     }
 
-    if (!cur.IsEmpty())
-        out.push_back(static_cast<T>(std::stoi(cur.c_str())));
+    if (cur.GetLength() != 0) out.push_back(static_cast<T>(atoi(cur.c_str())));
 }
 
 static int bind_text_or_null(sqlite3_stmt *stmt, int idx, const CString &v)
@@ -260,7 +251,7 @@ static CString column_text_or_empty(sqlite3_stmt *stmt, int idx)
     return CString(reinterpret_cast<const char *>(txt));
 }
 
-static void packed_to_vec_local(const CString &s, zerom2m::compat::Vector<CString> &out)
+static void packed_to_vec_local(const CString &s, Vector<CString> &out)
 {
     out.clear();
     CString cur;
@@ -334,11 +325,9 @@ bool Database::SavePrimitiveContent(const PrimitiveContent &pc, CString &err)
     }
 
     // Extract base fields from resource (we need to inspect by kind and get ResourceBase fields)
-    const ResourceBase *base = nullptr;
-    CString             ri;
-    CString             rn;
-    int                 ty = 0;
-    CString             pi;
+    CString ri;
+    CString rn;
+    CString pi;
 
     // Based on kind, insert into type table
     bool ok = true;
@@ -349,7 +338,7 @@ bool Database::SavePrimitiveContent(const PrimitiveContent &pc, CString &err)
     else if (auto *r = pc.GetIf<Subscription>()) ok = SaveSubscription(*r, err);
     else {
         ok  = false;
-        err = "Unsupported PrimitiveContentKind for save";
+        err = "Unsupported ResourceType for save";
     }
 
     if (!ok) {
@@ -430,23 +419,23 @@ bool Database::SaveCSE(const CSEBase &cse, CString &err)
         return false;
     }
     if (!InsertResources(cse, err)) return false;
- 
-    const char *sql =
-        "INSERT OR REPLACE INTO cse (ri, cst, csi, srt, srv, ctm, poa, ncp, nl, esi) VALUES (?,?,?,?,?,?,?,?,?,?);";
+
+    const char *sql = "INSERT OR REPLACE INTO cse (ri, cst, csi, srt, srv, ctm, poa, ncp, nl, esi) "
+                      "VALUES (?,?,?,?,?,?,?,?,?,?);";
     sqlite3_stmt *stmt = nullptr;
     int           rc   = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
         err = CString(sqlite3_errmsg(db_));
         return false;
     }
- 
+
     bind_text_or_null(stmt, 1, cse.resourceID);
     sqlite3_bind_int(stmt, 2, static_cast<int>(cse.cseType));
     bind_text_or_null(stmt, 3, cse.cseID);
- 
+
     // supportedResourceType: pack as integers separated by 0x1F
     {
-        zerom2m::compat::Vector<CString> srtStrs;
+        Vector<CString> srtStrs;
         for (unsigned i = 0; i < cse.supportedResourceType.GetCount(); ++i) {
             CString s;
             s.Format("%d", static_cast<int>(cse.supportedResourceType[i]));
@@ -455,7 +444,7 @@ bool Database::SaveCSE(const CSEBase &cse, CString &err)
         CString srt = VecToPacked(srtStrs);
         bind_text_or_null(stmt, 4, srt);
     }
- 
+
     CString srv = VecToPacked(cse.supportedReleaseVersions);
     bind_text_or_null(stmt, 5, srv);
     bind_text_or_null(stmt, 6, cse.currentTime);
@@ -464,7 +453,7 @@ bool Database::SaveCSE(const CSEBase &cse, CString &err)
     bind_text_or_null(stmt, 8, cse.notifCongestionPolicy);
     bind_text_or_null(stmt, 9, cse.nodeLink);
     bind_text_or_null(stmt, 10, cse.e2eSecInfo);
- 
+
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
@@ -616,21 +605,20 @@ bool Database::SaveSubscription(const Subscription &sub, CString &err)
 
     if (!InsertResources(sub, err)) return false;
 
-    const char *sql =
-        "INSERT OR REPLACE INTO subscription ("
-        "ri, "
-        "enc_cb, enc_ca, enc_ms, enc_us, enc_sts, enc_stb, "
-        "enc_eb, enc_ea, enc_labels, enc_sa, enc_sb, "
-        "enc_net, enc_chty, enc_atr, enc_fu, enc_cfq, enc_cfs, enc_md, "
-        "rtl_max, rtl_tw, "
-        "btn_num, btn_dur, "
-        "exc, nu, gpi, nfu, psn, pn, nsp, ln, nct, nec, su, cr, gn, acrs"
-        ") VALUES ("
-        "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?"
-        ");";
+    const char *sql = "INSERT OR REPLACE INTO subscription ("
+                      "ri, "
+                      "enc_cb, enc_ca, enc_ms, enc_us, enc_sts, enc_stb, "
+                      "enc_eb, enc_ea, enc_labels, enc_sa, enc_sb, "
+                      "enc_net, enc_chty, enc_atr, enc_fu, enc_cfq, enc_cfs, enc_md, "
+                      "rtl_max, rtl_tw, "
+                      "btn_num, btn_dur, "
+                      "exc, nu, gpi, nfu, psn, pn, nsp, ln, nct, nec, su, cr, crp, gn, acrs"
+                      ") VALUES ("
+                      "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?"
+                      ");";
 
     sqlite3_stmt *stmt = nullptr;
-    int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+    int           rc   = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
         err = CString(sqlite3_errmsg(db_));
         return false;
@@ -676,16 +664,13 @@ bool Database::SaveSubscription(const Subscription &sub, CString &err)
 
     if (enc.filterUsage.has_value())
         sqlite3_bind_int(stmt, i++, static_cast<int>(*enc.filterUsage));
-    else
-        sqlite3_bind_null(stmt, i++);
+    else sqlite3_bind_null(stmt, i++);
 
     bind_text_or_null(stmt, i++, enc.contentFilterQuery);
     bind_text_or_null(stmt, i++, enc.contentFilterSyntax);
 
-    if (enc.missingData.has_value())
-        sqlite3_bind_int(stmt, i++, *enc.missingData ? 1 : 0);
-    else
-        sqlite3_bind_null(stmt, i++);
+    if (enc.missingData.has_value()) sqlite3_bind_int(stmt, i++, *enc.missingData ? 1 : 0);
+    else sqlite3_bind_null(stmt, i++);
 
     // -------------------------
     // rtl (RateLimit)
@@ -693,13 +678,11 @@ bool Database::SaveSubscription(const Subscription &sub, CString &err)
     if (sub.rateLimit.has_value()) {
         if (sub.rateLimit->maxNrOfNotify.has_value())
             sqlite3_bind_int(stmt, i++, *sub.rateLimit->maxNrOfNotify);
-        else
-            sqlite3_bind_null(stmt, i++);
+        else sqlite3_bind_null(stmt, i++);
 
         if (sub.rateLimit->timeWindow.has_value())
             sqlite3_bind_int(stmt, i++, *sub.rateLimit->timeWindow);
-        else
-            sqlite3_bind_null(stmt, i++);
+        else sqlite3_bind_null(stmt, i++);
     } else {
         sqlite3_bind_null(stmt, i++);
         sqlite3_bind_null(stmt, i++);
@@ -719,10 +702,8 @@ bool Database::SaveSubscription(const Subscription &sub, CString &err)
     // -------------------------
     // remaining Subscription fields
     // -------------------------
-    if (sub.expirationCounter.has_value())
-        sqlite3_bind_int(stmt, i++, *sub.expirationCounter);
-    else
-        sqlite3_bind_null(stmt, i++);
+    if (sub.expirationCounter.has_value()) sqlite3_bind_int(stmt, i++, *sub.expirationCounter);
+    else sqlite3_bind_null(stmt, i++);
 
     CString nu = VecToPacked(sub.notificationURI);
     bind_text_or_null(stmt, i++, nu);
@@ -732,36 +713,31 @@ bool Database::SaveSubscription(const Subscription &sub, CString &err)
 
     if (sub.preSubscriptionNotify.has_value())
         sqlite3_bind_int(stmt, i++, *sub.preSubscriptionNotify);
-    else
-        sqlite3_bind_null(stmt, i++);
+    else sqlite3_bind_null(stmt, i++);
 
-    if (sub.pendingNotification.has_value())
-        sqlite3_bind_int(stmt, i++, *sub.pendingNotification);
-    else
-        sqlite3_bind_null(stmt, i++);
+    if (sub.pendingNotification.has_value()) sqlite3_bind_int(stmt, i++, *sub.pendingNotification);
+    else sqlite3_bind_null(stmt, i++);
 
     if (sub.notificationStoragePriority.has_value())
         sqlite3_bind_int(stmt, i++, *sub.notificationStoragePriority);
-    else
-        sqlite3_bind_null(stmt, i++);
+    else sqlite3_bind_null(stmt, i++);
 
-    if (sub.latestNotify.has_value())
-        sqlite3_bind_int(stmt, i++, *sub.latestNotify ? 1 : 0);
-    else
-        sqlite3_bind_null(stmt, i++);
+    if (sub.latestNotify.has_value()) sqlite3_bind_int(stmt, i++, *sub.latestNotify ? 1 : 0);
+    else sqlite3_bind_null(stmt, i++);
 
     if (sub.notificationContentType.has_value())
         sqlite3_bind_int(stmt, i++, static_cast<int>(*sub.notificationContentType));
-    else
-        sqlite3_bind_null(stmt, i++);
+    else sqlite3_bind_null(stmt, i++);
 
     if (sub.notificationEventCat.has_value())
         sqlite3_bind_int(stmt, i++, *sub.notificationEventCat);
-    else
-        sqlite3_bind_null(stmt, i++);
+    else sqlite3_bind_null(stmt, i++);
 
     bind_text_or_null(stmt, i++, sub.subscriberURI);
     bind_text_or_null(stmt, i++, sub.creator);
+    if (sub.creatorProvided.has_value())
+        sqlite3_bind_int(stmt, i++, sub.creatorProvided.value() ? 1 : 0);
+    else sqlite3_bind_null(stmt, i++);
     bind_text_or_null(stmt, i++, sub.groupName);
     bind_text_or_null(stmt, i++, sub.associatedCrossResourceSub);
 
@@ -836,7 +812,7 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
     sqlite3_finalize(stmt);
 
     // based on type, query the type table
-    switch (static_cast<zerom2m::onem2m::types::ResourceType>(ty)) {
+    switch (static_cast<ResourceType>(ty)) {
         case ResourceType::AE: {
 
             const char   *q   = "SELECT api, aei, apn, poa, ontologyRef, nl, csz, regs, rr, mei, "
@@ -879,13 +855,13 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
                     a.ontologyRef = column_text_or_empty(s2, 4);
                 if (sqlite3_column_type(s2, 5) != SQLITE_NULL)
                     a.nodeLink = column_text_or_empty(s2, 5);
-                CString csz = column_text_or_empty(s2, 7);
+                CString csz = column_text_or_empty(s2, 6);
                 PackedToVec(csz, a.contentSerialization);
-                if (sqlite3_column_type(s2, 8) != SQLITE_NULL)
-                    a.registrationStatus = (u8)sqlite3_column_int(s2, 8);
+                if (sqlite3_column_type(s2, 7) != SQLITE_NULL)
+                    a.registrationStatus = (u8)sqlite3_column_int(s2, 7);
 
-                a.requestReachability = (sqlite3_column_type(s2, 9) != SQLITE_NULL)
-                                            ? (sqlite3_column_int(s2, 9) != 0)
+                a.requestReachability = (sqlite3_column_type(s2, 8) != SQLITE_NULL)
+                                            ? (sqlite3_column_int(s2, 8) != 0)
                                             : false;
                 if (sqlite3_column_type(s2, 9) != SQLITE_NULL)
                     a.m2mExtID = column_text_or_empty(s2, 9);
@@ -1017,18 +993,17 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
             return false;
         }
         case ResourceType::Subscription: {
-            const char *q =
-                "SELECT "
-                "enc_cb, enc_ca, enc_ms, enc_us, enc_sts, enc_stb, "
-                "enc_eb, enc_ea, enc_labels, enc_sa, enc_sb, "
-                "enc_net, enc_chty, enc_atr, enc_fu, enc_cfq, enc_cfs, enc_md, "
-                "rtl_max, rtl_tw, "
-                "btn_num, btn_dur, "
-                "exc, nu, gpi, nfu, psn, pn, nsp, ln, nct, nec, su, cr, gn, acrs "
-                "FROM subscription WHERE ri = ? LIMIT 1;";
+            const char *q = "SELECT "
+                            "enc_cb, enc_ca, enc_ms, enc_us, enc_sts, enc_stb, "
+                            "enc_eb, enc_ea, enc_labels, enc_sa, enc_sb, "
+                            "enc_net, enc_chty, enc_atr, enc_fu, enc_cfq, enc_cfs, enc_md, "
+                            "rtl_max, rtl_tw, "
+                            "btn_num, btn_dur, "
+                            "exc, nu, gpi, nfu, psn, pn, nsp, ln, nct, nec, su, cr, crp, gn, acrs "
+                            "FROM subscription WHERE ri = ? LIMIT 1;";
 
-            sqlite3_stmt *s2 = nullptr;
-            int rc2 = sqlite3_prepare_v2(db_, q, -1, &s2, nullptr);
+            sqlite3_stmt *s2  = nullptr;
+            int           rc2 = sqlite3_prepare_v2(db_, q, -1, &s2, nullptr);
 
             if (rc2 != SQLITE_OK) {
                 err = CString(sqlite3_errmsg(db_));
@@ -1044,24 +1019,23 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
                 return false;
             }
 
-            // -------------------------
-            // FAIL-FAST: sanity check
-            // -------------------------
-            const int COLS = sqlite3_column_count(s2);
-            if (COLS < 34) {
-                sqlite3_finalize(s2);
-                err = "subscription schema mismatch";
-                return false;
-            }
-
             Subscription s;
 
-            apply_common_resource_base(
-                s,
-                ri, rn, pi, ct, lt, et,
-                labels, acpi, custodian, daci,
-                announceTo, announcedAttribute,
-                hasAst, ast);
+            apply_common_resource_base(s,
+                                       ri,
+                                       rn,
+                                       pi,
+                                       ct,
+                                       lt,
+                                       et,
+                                       labels,
+                                       acpi,
+                                       custodian,
+                                       daci,
+                                       announceTo,
+                                       announcedAttribute,
+                                       hasAst,
+                                       ast);
 
             s.resourceType = ResourceType::Subscription;
 
@@ -1071,7 +1045,6 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
             // enc
             // -------------------------
             auto &enc = s.eventNotificationCriteria;
-            
 
             enc.createdBefore   = column_text_or_null(s2, i);
             enc.createdAfter    = column_text_or_null(s2, i);
@@ -1079,12 +1052,12 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
             enc.unmodifiedSince = column_text_or_null(s2, i);
 
             enc.stateTagSmaller = sqlite3_column_type(s2, i) != SQLITE_NULL
-                ? Optional<s32>(sqlite3_column_int(s2, i++))
-                : (++i, Optional<s32>{});
+                                      ? Optional<s32>(sqlite3_column_int(s2, i++))
+                                      : (++i, Optional<s32>{});
 
             enc.stateTagBigger = sqlite3_column_type(s2, i) != SQLITE_NULL
-                ? Optional<s32>(sqlite3_column_int(s2, i++))
-                : (++i, Optional<s32>{});
+                                     ? Optional<s32>(sqlite3_column_int(s2, i++))
+                                     : (++i, Optional<s32>{});
 
             enc.expireBefore = column_text_or_null(s2, i);
             enc.expireAfter  = column_text_or_null(s2, i);
@@ -1092,12 +1065,12 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
             PackedToVec(column_text_or_empty(s2, i++), enc.labels);
 
             enc.sizeAbove = sqlite3_column_type(s2, i) != SQLITE_NULL
-                ? Optional<s64>(sqlite3_column_int64(s2, i++))
-                : (++i, Optional<s64>{});
+                                ? Optional<s64>(sqlite3_column_int64(s2, i++))
+                                : (++i, Optional<s64>{});
 
             enc.sizeBelow = sqlite3_column_type(s2, i) != SQLITE_NULL
-                ? Optional<s64>(sqlite3_column_int64(s2, i++))
-                : (++i, Optional<s64>{});
+                                ? Optional<s64>(sqlite3_column_int64(s2, i++))
+                                : (++i, Optional<s64>{});
 
             PackedToEnumVec(column_text_or_empty(s2, i++), enc.notificationEventType);
             PackedToEnumVec(column_text_or_empty(s2, i++), enc.childResourceType);
@@ -1105,23 +1078,20 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
 
             if (sqlite3_column_type(s2, i) != SQLITE_NULL)
                 enc.filterUsage = (FilterUsage)sqlite3_column_int(s2, i++);
-            else
-                i++;
+            else i++;
 
             enc.contentFilterQuery  = column_text_or_null(s2, i);
             enc.contentFilterSyntax = column_text_or_null(s2, i);
 
             enc.missingData = sqlite3_column_type(s2, i) != SQLITE_NULL
-                ? Optional<boolean>(sqlite3_column_int(s2, i++) != 0)
-                : (++i, Optional<boolean>{});
+                                  ? Optional<boolean>(sqlite3_column_int(s2, i++) != 0)
+                                  : (++i, Optional<boolean>{});
 
             // -------------------------
             // VALIDATION (enc sanity)
             // -------------------------
-            if (enc.stateTagSmaller.has_value() &&
-                enc.stateTagBigger.has_value() &&
-                *enc.stateTagSmaller > *enc.stateTagBigger)
-            {
+            if (enc.stateTagSmaller.has_value() && enc.stateTagBigger.has_value() &&
+                *enc.stateTagSmaller > *enc.stateTagBigger) {
                 sqlite3_finalize(s2);
                 err = "invalid state tag range in subscription";
                 return false;
@@ -1131,19 +1101,16 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
             // rtl
             // -------------------------
             if (sqlite3_column_type(s2, i) != SQLITE_NULL ||
-                sqlite3_column_type(s2, i + 1) != SQLITE_NULL)
-            {
+                sqlite3_column_type(s2, i + 1) != SQLITE_NULL) {
                 RateLimit rl;
 
                 if (sqlite3_column_type(s2, i) != SQLITE_NULL)
                     rl.maxNrOfNotify = sqlite3_column_int(s2, i++);
-                else
-                    i++;
+                else i++;
 
                 if (sqlite3_column_type(s2, i) != SQLITE_NULL)
                     rl.timeWindow = sqlite3_column_int(s2, i++);
-                else
-                    i++;
+                else i++;
 
                 if (rl.maxNrOfNotify.has_value() && *rl.maxNrOfNotify < 0) {
                     sqlite3_finalize(s2);
@@ -1175,7 +1142,7 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
                     return false;
                 }
 
-                bn.duration = column_text_or_null(s2, i);
+                bn.duration   = column_text_or_null(s2, i);
                 s.batchNotify = bn;
             } else {
                 i += 2;
@@ -1185,41 +1152,44 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
             // base fields
             // -------------------------
             s.expirationCounter = sqlite3_column_type(s2, i) != SQLITE_NULL
-                ? Optional<s32>(sqlite3_column_int(s2, i++))
-                : (++i, Optional<s32>{});
+                                      ? Optional<s32>(sqlite3_column_int(s2, i++))
+                                      : (++i, Optional<s32>{});
 
             PackedToVec(column_text_or_empty(s2, i++), s.notificationURI);
 
-            s.groupID = column_text_or_null(s2, i);
+            s.groupID                   = column_text_or_null(s2, i);
             s.notificationForwardingURI = column_text_or_null(s2, i);
 
-            s.preSubscriptionNotify = sqlite3_column_type(s2, i) != SQLITE_NULL
-                ? sqlite3_column_int(s2, i++)
-                : (++i, 0);
+            s.preSubscriptionNotify =
+                sqlite3_column_type(s2, i) != SQLITE_NULL ? sqlite3_column_int(s2, i++) : (++i, 0);
 
             s.pendingNotification = sqlite3_column_type(s2, i) != SQLITE_NULL
-                ? (u8)sqlite3_column_int(s2, i++)
-                : (++i, 0);
+                                        ? (u8)sqlite3_column_int(s2, i++)
+                                        : (++i, 0);
 
-            s.notificationStoragePriority = sqlite3_column_type(s2, i) != SQLITE_NULL
-                ? sqlite3_column_int(s2, i++)
-                : (++i, 0);
+            s.notificationStoragePriority =
+                sqlite3_column_type(s2, i) != SQLITE_NULL ? sqlite3_column_int(s2, i++) : (++i, 0);
 
             s.latestNotify = sqlite3_column_type(s2, i) != SQLITE_NULL
-                ? sqlite3_column_int(s2, i++) != 0
-                : (++i, false);
+                                 ? sqlite3_column_int(s2, i++) != 0
+                                 : (++i, false);
 
             s.notificationContentType = sqlite3_column_type(s2, i) != SQLITE_NULL
-                ? (NotificationContentType)sqlite3_column_int(s2, i++)
-                : (++i, NotificationContentType{});
+                                            ? (NotificationContentType)sqlite3_column_int(s2, i++)
+                                            : (++i, NotificationContentType{});
 
             s.notificationEventCat = sqlite3_column_type(s2, i) != SQLITE_NULL
-                ? (u8)sqlite3_column_int(s2, i++)
-                : (++i, 0);
+                                         ? (u8)sqlite3_column_int(s2, i++)
+                                         : (++i, 0);
 
             s.subscriberURI = column_text_or_null(s2, i);
-            s.creator = column_text_or_null(s2, i);
-            s.groupName = column_text_or_null(s2, i);
+            s.creator       = column_text_or_null(s2, i);
+
+            s.creatorProvided = (sqlite3_column_type(s2, i) != SQLITE_NULL)
+                                    ? (sqlite3_column_int(s2, i) != 0)
+                                    : false;
+            i++;
+            s.groupName                  = column_text_or_null(s2, i);
             s.associatedCrossResourceSub = column_text_or_null(s2, i);
 
             sqlite3_finalize(s2);
@@ -1228,7 +1198,8 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
             return true;
         }
         case ResourceType::CSEBase: {
-            const char   *q   = "SELECT cst, csi, srt, srv, ctm, poa, ncp, nl, esi FROM cse WHERE ri = ? LIMIT 1;";
+            const char *q =
+                "SELECT cst, csi, srt, srv, ctm, poa, ncp, nl, esi FROM cse WHERE ri = ? LIMIT 1;";
             sqlite3_stmt *s2  = nullptr;
             int           rc2 = sqlite3_prepare_v2(db_, q, -1, &s2, nullptr);
             if (rc2 != SQLITE_OK) {
@@ -1257,16 +1228,16 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
                 c.resourceType = ResourceType::CSEBase;
                 c.cseType      = static_cast<CSEType>(sqlite3_column_int(s2, 0));
                 c.cseID        = column_text_or_empty(s2, 1);
- 
+
                 // supportedResourceType: unpack integers back to ResourceType
                 {
-                    zerom2m::compat::Vector<CString> srtStrs;
+                    Vector<CString> srtStrs;
                     PackedToVec(column_text_or_empty(s2, 2), srtStrs);
                     for (unsigned i = 0; i < srtStrs.GetCount(); ++i)
                         c.supportedResourceType.push_back(
                             static_cast<ResourceType>(atoi(srtStrs[i].c_str())));
                 }
- 
+
                 PackedToVec(column_text_or_empty(s2, 3), c.supportedReleaseVersions);
                 c.currentTime = column_text_or_empty(s2, 4);
                 PackedToVec(column_text_or_empty(s2, 5), c.pointOfAccess);
@@ -1276,7 +1247,7 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
                     c.nodeLink = column_text_or_empty(s2, 7);
                 if (sqlite3_column_type(s2, 8) != SQLITE_NULL)
                     c.e2eSecInfo = column_text_or_empty(s2, 8);
- 
+
                 out = c;
                 sqlite3_finalize(s2);
                 return true;
@@ -1296,7 +1267,7 @@ bool Database::LoadPrimitiveContentByTarget(const CString    &target,
 // by `target` (resolved by ri, rn, or pi/rn — same rules as
 // LoadPrimitiveContentByTarget).
 //
-// If `childrenKind` is PrimitiveContentKind::None the filter is omitted and
+// If `childrenKind` is ResourceType::None the filter is omitted and
 // all child types are returned.  Otherwise only children whose `ty` column
 // matches the given kind are included.
 //
