@@ -7,6 +7,7 @@
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License v3.0 (GPL-3.0).
  */
+#include <zerom2m/http/config.h>
 #include <zerom2m/http/http_codec.h>
 
 #include <circle/logger.h>
@@ -47,47 +48,40 @@ RequestMethod ParseMethodToken(const char *token)
     return RequestMethod::RequestMethodUnknown;
 }
 
-bool HeaderNameEquals(const StringView &name, const char *literal)
+bool HeaderNameEquals(const CString &name, const char *literal)
 {
-    if (name.Data == nullptr || literal == nullptr) { return false; }
+    if (literal == nullptr) { return false; }
 
-    const size_t literalLength = strlen(literal);
-    return name.Length == literalLength && strncasecmp(name.Data, literal, literalLength) == 0;
+    return name.Compare(literal) == 0;
 }
 
-bool IsReservedRequestHeader(const StringView &name)
+bool IsReservedRequestHeader(const CString &name)
 {
     return HeaderNameEquals(name, "Host") || HeaderNameEquals(name, "Connection") ||
            HeaderNameEquals(name, "User-Agent") || HeaderNameEquals(name, "Content-Length");
-}
-
-void AppendStringView(CString &out, const StringView &value)
-{
-    if (value.Data == nullptr) { return; }
-
-    for (size_t i = 0; i < value.Length; ++i) {
-        out += value.Data[i];
-    }
 }
 
 CString BuildTarget(const HttpRequest &request)
 {
     CString target;
 
-    if (request.Target.Data != nullptr && request.Target.Length > 0) {
-        AppendStringView(target, request.Target);
+    // 1. If full target exists, use it directly
+    if (request.Target.GetLength() > 0) {
+        target = request.Target;
         return target;
     }
 
-    if (request.Path.Data != nullptr && request.Path.Length > 0) {
-        AppendStringView(target, request.Path);
+    // 2. Build from path
+    if (request.Path.GetLength() > 0) {
+        target = request.Path;
     } else {
         target = "/";
     }
 
-    if (request.Query.Data != nullptr && request.Query.Length > 0) {
+    // 3. Append query if present
+    if (request.Query.GetLength() > 0) {
         target += '?';
-        AppendStringView(target, request.Query);
+        target += request.Query;
     }
 
     return target;
@@ -234,158 +228,161 @@ ResponseStatus HttpCodec::ParseRequest(const u8 *data, size_t length, HttpReques
 {
     if (data == nullptr || length == 0) { return ResponseStatus::BadRequest; }
 
-    char  *buffer    = (char *)data;
-    size_t i         = 0;
-    size_t lineStart = 0;
-    bool   firstLine = true;
+    request.Clear();
 
-    request.HeaderCount      = 0;
-    request.OwnedHeaderCount = 0;
-    request.Headers          = request.HeaderStorage;
+    char *buffer = (char *)data;
+
+    //
+    // Find end of headers (\r\n\r\n)
+    //
+
+    size_t headerEnd = MAX_HEADERS;
+
+    for (size_t i = 0; i + 3 < length; ++i) {
+        if (buffer[i] == '\r' && buffer[i + 1] == '\n' && buffer[i + 2] == '\r' &&
+            buffer[i + 3] == '\n') {
+            headerEnd = i;
+            break;
+        }
+    }
+
+    if (headerEnd == MAX_HEADERS) { return ResponseStatus::BadRequest; }
 
     auto parseRequestLine = [&](char *line) -> ResponseStatus {
-        char *method = line;
-        char *sp1    = strchr(line, ' ');
-        if (!sp1) {
-            CLogger::Get()->Write(FromHttpCodec, LogWarning, "Request line missing method");
-            return ResponseStatus::BadRequest;
-        }
+        char *sp1 = strchr(line, ' ');
+        if (!sp1) { return ResponseStatus::BadRequest; }
+
         *sp1 = '\0';
 
-        char *target = sp1 + 1;
-        char *sp2    = strchr(target, ' ');
-        if (!sp2) {
-            CLogger::Get()->Write(FromHttpCodec, LogWarning, "Request line missing target");
-            return ResponseStatus::BadRequest;
-        }
+        char *sp2 = strchr(sp1 + 1, ' ');
+        if (!sp2) { return ResponseStatus::BadRequest; }
+
         *sp2 = '\0';
 
+        char *method  = line;
+        char *target  = sp1 + 1;
         char *version = sp2 + 1;
-        if (*version == '\0') {
-            CLogger::Get()->Write(FromHttpCodec, LogWarning, "Request line missing version");
-            return ResponseStatus::BadRequest;
-        }
 
         request.Method = ParseMethodToken(method);
-        if (request.Method == RequestMethod::RequestMethodUnknown) {
-            CLogger::Get()->Write(FromHttpCodec, LogWarning, "Unknown method: %s", method);
-            return ResponseStatus::MethodNotAllowed;
-        }
 
-        request.Target.Data    = target;
-        request.Target.Length  = strlen(target);
-        request.Version.Data   = version;
-        request.Version.Length = strlen(version);
+        if (request.Method == RequestMethodUnknown) { return ResponseStatus::BadRequest; }
+
+        request.Target  = target;
+        request.Version = version;
 
         char *q = strchr(target, '?');
-        if (q) {
-            *q                   = '\0';
-            request.Path.Data    = target;
-            request.Path.Length  = strlen(target);
-            request.Query.Data   = q + 1;
-            request.Query.Length = strlen(q + 1);
+
+        if (q != nullptr) {
+            *q = '\0';
+
+            request.Path  = target;
+            request.Query = q + 1;
         } else {
-            request.Path.Data    = target;
-            request.Path.Length  = strlen(target);
-            request.Query.Data   = nullptr;
-            request.Query.Length = 0;
+            request.Path  = target;
+            request.Query = "";
         }
 
         return ResponseStatus::OK;
     };
 
     auto parseHeaderLine = [&](char *line) -> ResponseStatus {
-        if (request.OwnedHeaderCount >= HttpRequest::MaxHeaders) {
-            CLogger::Get()->Write(FromHttpCodec, LogWarning, "Too many headers");
-            return ResponseStatus::RequestHeaderFieldsTooLarge;
-        }
-
         char *colon = strchr(line, ':');
-        if (!colon) {
-            CLogger::Get()->Write(FromHttpCodec, LogWarning, "Header missing colon");
-            return ResponseStatus::BadRequest;
-        }
+
+        if (!colon) { return ResponseStatus::BadRequest; }
+
+        *colon = '\0';
 
         char *nameStart  = line;
-        char *nameEnd    = colon;
         char *valueStart = colon + 1;
-        char *valueEnd   = line + strlen(line);
 
-        TrimSpaces(nameStart, nameEnd);
-        TrimSpaces(valueStart, valueEnd);
+        while (*valueStart == ' ' || *valueStart == '\t') {
+            ++valueStart;
+        }
 
-        *nameEnd  = '\0';
+        char *valueEnd = valueStart + strlen(valueStart);
+
+        while (valueEnd > valueStart && (valueEnd[-1] == ' ' || valueEnd[-1] == '\t')) {
+            --valueEnd;
+        }
+
         *valueEnd = '\0';
 
-        request.HeaderStorage[request.OwnedHeaderCount].Name.Data    = nameStart;
-        request.HeaderStorage[request.OwnedHeaderCount].Name.Length  = strlen(nameStart);
-        request.HeaderStorage[request.OwnedHeaderCount].Value.Data   = valueStart;
-        request.HeaderStorage[request.OwnedHeaderCount].Value.Length = strlen(valueStart);
-        request.OwnedHeaderCount++;
+        request.HeaderNames.push_back(nameStart);
+        request.HeaderValues.push_back(valueStart);
+        // CLogger::Get()->Write(
+        //     FromHttpCodec, LogNotice, "Parsed header: %s: %s", nameStart, valueStart);
 
         return ResponseStatus::OK;
     };
 
-    while (i < length) {
-        if (buffer[i] == '\r') {
-            buffer[i] = '\0';
-            if (i + 1 < length && data[i + 1] == '\n') {
-                i++;
-            } else {
-                i++;
-                lineStart = i;
-                continue;
-            }
-        }
+    //
+    // Parse request line + headers
+    //
+
+    bool   firstLine = true;
+    size_t lineStart = 0;
+
+    for (size_t i = 0; i < headerEnd + 2 && i < length; ++i) {
+        if (buffer[i] == '\r') { buffer[i] = '\0'; }
 
         if (buffer[i] == '\n') {
-            buffer[i]  = '\0';
+            buffer[i] = '\0';
+
             char *line = &buffer[lineStart];
 
-            if (line[0] == '\0') {
-                size_t bodyOffset = i + 1;
-                if (bodyOffset < length) {
-                    request.Body       = (const u8 *)&buffer[bodyOffset];
-                    request.BodyLength = length - bodyOffset;
+            if (*line != '\0') {
+                ResponseStatus status;
+
+                if (firstLine) {
+                    status    = parseRequestLine(line);
+                    firstLine = false;
                 } else {
-                    request.Body       = nullptr;
-                    request.BodyLength = 0;
+                    status = parseHeaderLine(line);
                 }
 
-                request.Headers     = request.HeaderStorage;
-                request.HeaderCount = request.OwnedHeaderCount;
-                return ResponseStatus::OK;
-            }
-
-            ResponseStatus status = ResponseStatus::OK;
-            if (firstLine) {
-                status    = parseRequestLine(line);
-                firstLine = false;
-            } else {
-                status = parseHeaderLine(line);
-            }
-
-            if (status != ResponseStatus::OK) {
-                CLogger::Get()->Write(FromHttpCodec,
-                                      LogWarning,
-                                      "ParseFailed: i=%u status=%u",
-                                      (unsigned)i,
-                                      (unsigned)status);
-                return status;
+                if (status != ResponseStatus::OK) { return status; }
             }
 
             lineStart = i + 1;
         }
-        i++;
     }
 
-    return ResponseStatus::BadRequest;
+    //
+    // Parse body
+    //
+
+    size_t bodyOffset = headerEnd + 4;
+
+    CString cl = request.GetHeader("Content-Length");
+
+    size_t contentLength = 0;
+
+    if (cl.GetLength() > 0) { contentLength = (size_t)atoi(cl.c_str()); }
+
+    if (contentLength == 0) {
+        request.Body = "";
+        return ResponseStatus::OK;
+    }
+
+    if (bodyOffset + contentLength > length) { return ResponseStatus::BadRequest; }
+
+    char *bodyCopy = new char[contentLength + 1];
+
+    memcpy(bodyCopy, &buffer[bodyOffset], contentLength);
+
+    bodyCopy[contentLength] = '\0';
+
+    request.Body = bodyCopy;
+
+    delete[] bodyCopy;
+
+    return ResponseStatus::OK;
 }
 
 void HttpCodec::SerializeRequest(const HttpRequest &request,
                                  CString           &outHeader,
-                                 const char        *host,
-                                 const char        *userAgent)
+                                 CString           &host,
+                                 CString           &userAgent)
 {
     outHeader = "";
 
@@ -418,7 +415,6 @@ void HttpCodec::SerializeRequest(const HttpRequest &request,
         case CONNECT:
             method = "CONNECT";
             break;
-        case RequestMethodUnknown:
         default:
             method = "GET";
             break;
@@ -427,34 +423,44 @@ void HttpCodec::SerializeRequest(const HttpRequest &request,
     CString target = BuildTarget(request);
     if (target.GetLength() == 0) { target = "/"; }
 
-    outHeader.Format("%s %s HTTP/1.1\r\n", method, static_cast<const char *>(target));
+    outHeader.Format("%s %s HTTP/1.1\r\n", method, target.c_str());
 
-    if (host != nullptr && *host != '\0') {
+    if (host.GetLength() > 0) {
         outHeader.Append("Host: ");
         outHeader.Append(host);
         outHeader.Append("\r\n");
     }
 
-    if (userAgent != nullptr && *userAgent != '\0') {
+    if (userAgent.GetLength() > 0) {
         outHeader.Append("User-Agent: ");
         outHeader.Append(userAgent);
         outHeader.Append("\r\n");
     }
 
-    for (size_t i = 0; i < request.HeaderCount; ++i) {
-        const HttpHeader &h = request.Headers[i];
-        if (h.Name.Data == nullptr || h.Value.Data == nullptr) { continue; }
-        if (IsReservedRequestHeader(h.Name)) { continue; }
+    // Headers stored as parallel vectors: Name[i], Value[i]
+    for (size_t i = 0; i < request.HeaderCount(); ++i) {
+        const CString &name  = request.HeaderNames[i];
+        const CString &value = request.HeaderValues[i];
 
-        AppendStringView(outHeader, h.Name);
+        // Skip empty headers
+        if (name.GetLength() == 0) continue;
+
+        // Skip reserved headers
+        if (name.Compare("Host") == 0 || name.Compare("Connection") == 0 ||
+            name.Compare("User-Agent") == 0 || name.Compare("Content-Length") == 0) {
+            continue;
+        }
+
+        outHeader.Append(name);
         outHeader.Append(": ");
-        AppendStringView(outHeader, h.Value);
+        outHeader.Append(value);
         outHeader.Append("\r\n");
     }
 
-    if (request.Body != nullptr && request.BodyLength > 0) {
+    if (request.Body.GetLength() > 0) {
         CString contentLength;
-        contentLength.Format("%u", static_cast<unsigned>(request.BodyLength));
+        contentLength.Format("%u", static_cast<unsigned>(request.Body.GetLength()));
+
         outHeader.Append("Content-Length: ");
         outHeader.Append(contentLength);
         outHeader.Append("\r\n");
@@ -469,28 +475,25 @@ void HttpCodec::SerializeResponse(const HttpResponse &response, CString &outHead
     outHeader.Append("Server: " SERVER_NAME "\r\n");
 
     bool hasContentLength = false;
-    for (size_t i = 0; i < response.HeaderCount; ++i) {
-        const HttpHeader &h = response.Headers[i];
-        if (h.Name.Data == nullptr || h.Value.Data == nullptr) { continue; }
+    for (size_t i = 0; i < response.HeaderValues.GetCount(); ++i) {
+        const CString &name  = response.HeaderNames[i];
+        const CString &value = response.HeaderValues[i];
+        if (name.GetLength() == 0 || value.GetLength() == 0) { continue; }
 
-        if (h.Name.Length == sizeof("Content-Length") - 1 &&
-            strncmp(h.Name.Data, "Content-Length", sizeof("Content-Length") - 1) == 0) {
+        if (name.GetLength() == sizeof("Content-Length") - 1 &&
+            strncmp(name.c_str(), "Content-Length", sizeof("Content-Length") - 1) == 0) {
             hasContentLength = true;
         }
 
-        for (size_t n = 0; n < h.Name.Length; ++n) {
-            outHeader += h.Name.Data[n];
-        }
+        outHeader += name.c_str();
         outHeader.Append(": ");
-        for (size_t n = 0; n < h.Value.Length; ++n) {
-            outHeader += h.Value.Data[n];
-        }
+        outHeader += value.c_str();
         outHeader.Append("\r\n");
     }
 
     if (!hasContentLength) {
         CString len;
-        len.Format("%u", static_cast<unsigned>(response.BodyLength));
+        len.Format("%u", static_cast<unsigned>(response.Body.GetLength()));
         outHeader.Append("Content-Length: ");
         outHeader.Append(len);
         outHeader.Append("\r\n");
@@ -614,9 +617,18 @@ bool HttpCodec::ParseResponse(const u8 *data, size_t length, HttpResponse &respo
     if (bodyLength > MAX_CONTENT_SIZE) { return false; }
 
     if (bodyLength > 0) {
-        response.SetBody(reinterpret_cast<const char *>(&buffer[bodyStart]), bodyLength);
+        size_t bodyLen = length - bodyLength;
+
+        if (bodyLen > MAX_CONTENT_SIZE) { bodyLen = MAX_CONTENT_SIZE; }
+
+        char bodyStorage[MAX_CONTENT_SIZE + 1]{};
+
+        memcpy(bodyStorage, &buffer[bodyStart], bodyLen);
+        bodyStorage[bodyLen] = '\0';
+
+        response.Body = bodyStorage;
     } else {
-        response.ClearBody();
+        response.Body = "";
     }
 
     return true;

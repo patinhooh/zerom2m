@@ -12,7 +12,7 @@ import socket
 from rich import print
 
 BINDING						= 'http'		# possible values: http, https, mqtt, ws, coap
-# TARGETHOST					= '10.47.211.96'	# Hostname of the CSE	
+# TARGETHOST					= '192.168.242.96'	# Hostname of the CSE	
 TARGETHOST					= 'localhost'	# Hostname of the CSE	
 
 match BINDING:

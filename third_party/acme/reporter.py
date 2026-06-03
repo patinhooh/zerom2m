@@ -36,6 +36,17 @@ class RequestRecord:
 
 
 @dataclass
+class NotificationRecord:
+    seq: int
+    direction: str        # "received" (CSE → test server)
+    url: str              # notification server URL that received it
+    headers: dict
+    body: Any
+    response_status: Optional[int]   # RSC sent back to the CSE
+    timestamp: str        # ISO-8601
+
+
+@dataclass
 class TestCaseRecord:
     name: str
     module: str
@@ -44,6 +55,7 @@ class TestCaseRecord:
     failure_msg: str
     traceback: str
     requests: list[RequestRecord] = field(default_factory=list)
+    notifications: list[NotificationRecord] = field(default_factory=list)
     start_ts: str = ""
 
 
@@ -52,12 +64,14 @@ class TestCaseRecord:
 _current_test: Optional[TestCaseRecord] = None
 _all_tests: list[TestCaseRecord] = []
 _req_seq: int = 0
+_notif_seq: int = 0
 _test_start: float = 0.0
 
 
 def begin_test(name: str, module: str) -> None:
-    global _current_test, _req_seq, _test_start
+    global _current_test, _req_seq, _notif_seq, _test_start
     _req_seq = 0
+    _notif_seq = 0
     _test_start = time.perf_counter()
     _current_test = TestCaseRecord(
         name=name,
@@ -67,6 +81,7 @@ def begin_test(name: str, module: str) -> None:
         failure_msg="",
         traceback="",
         requests=[],
+        notifications=[],
         start_ts=datetime.now(tz=timezone.utc).isoformat(),
     )
 
@@ -108,6 +123,37 @@ def record_request(
             resp_status=resp_status,
             resp_headers=resp_headers or {},
             resp_body=resp_body,
+            timestamp=datetime.now(tz=timezone.utc).isoformat(),
+        )
+    )
+
+
+def record_notification(
+    url: str,
+    headers: dict,
+    body: Any,
+    response_status: Optional[int],
+) -> None:
+    """Record an incoming notification received by the test notification server.
+
+    Args:
+        url:             The path/URL at which the notification was received.
+        headers:         The HTTP headers of the incoming notification request.
+        body:            The decoded notification payload (JSON dict, or None).
+        response_status: The oneM2M RSC value sent back in the response header.
+    """
+    global _notif_seq
+    if _current_test is None:
+        return
+    _notif_seq += 1
+    _current_test.notifications.append(
+        NotificationRecord(
+            seq=_notif_seq,
+            direction="received",
+            url=url,
+            headers=headers or {},
+            body=body,
+            response_status=response_status,
             timestamp=datetime.now(tz=timezone.utc).isoformat(),
         )
     )
@@ -214,7 +260,6 @@ def _health_ring(health: int, comp: str, total: int, fail: int) -> str:
     r = 28
     cir = 2 * 3.14159 * r
     off = cir * (1 - health / 100)
-    # Match the new viewer colors
     color = "#00d900" if health >= 90 else "#ffef62" if health >= 60 else "#f92672"
     return f"""
 <div class="comp-card" data-comp="{comp}">
@@ -249,8 +294,8 @@ def _render_body(body: Any) -> str:
     return f'<pre class="raw-body">{body}</pre>'
 
 
-def _render_headers(hds: dict) -> str:
-    if not hds:
+def _render_headers(hds: Any) -> str:
+    if not hds or not isinstance(hds, dict):
         return '<span class="empty">— none —</span>'
     rows = "".join(
         f'<tr><td class="hdr-k">{k}</td><td class="hdr-v">{v}</td></tr>'
@@ -291,8 +336,44 @@ def _render_request(req: RequestRecord, idx: int) -> str:
 </details>"""
 
 
+def _render_notification(notif: NotificationRecord) -> str:
+    rsc_ok = notif.response_status is not None and 2000 <= notif.response_status < 3000
+    rsc_cls = "rsc-ok" if rsc_ok else "rsc-err"
+    resp_headers = {
+        "X-M2M-RSC": str(notif.response_status) if notif.response_status is not None else "—",
+        "Timestamp":  notif.timestamp,
+    }
+    return f"""
+<details class="notif-block">
+  <summary class="notif-summary">
+    <span class="req-seq">#{notif.seq}</span>
+    <span class="notif-dir-badge">📨 NOTIFICATION</span>
+    <span class="req-url">{notif.url}</span>
+    <span class="rsc-badge {rsc_cls}">RSC {notif.response_status}</span>
+  </summary>
+  <div class="req-detail">
+    <div class="side">
+      <div class="side-label notif-label">RECEIVED FROM CSE</div>
+      <div class="section-title">Headers</div>
+      {_render_headers(notif.headers or {{}})}
+      <div class="section-title">Body</div>
+      {_render_body(notif.body)}
+    </div>
+    <div class="divider-v"></div>
+    <div class="side">
+      <div class="side-label notif-label">SENT BACK</div>
+      <div class="section-title">Headers</div>
+      {_render_headers(resp_headers)}
+      <div class="section-title">Body</div>
+      <span class="empty">— acknowledgement only —</span>
+    </div>
+  </div>
+</details>"""
+
+
 def _render_test(t: TestCaseRecord) -> str:
     reqs_html = "".join(_render_request(r, i) for i, r in enumerate(t.requests))
+    notifs_html = "".join(_render_notification(n) for n in t.notifications)
     empty_reqs = (
         '<p class="empty">No requests captured for this test.</p>'
         if not t.requests
@@ -307,6 +388,17 @@ def _render_test(t: TestCaseRecord) -> str:
             f'<div class="fail-msg"><strong>Failure:</strong> {t.failure_msg}</div>'
         )
     dur = f"{t.duration_s*1000:.1f} ms"
+    notif_count = len(t.notifications)
+    notif_badge = (
+        f'<span class="test-notifcount">{notif_count} notif</span>'
+        if notif_count
+        else ""
+    )
+    notifs_section = ""
+    if notif_count:
+        notifs_section = f"""
+    <div class="requests-label" style="margin-top:20px">Notifications Received ({notif_count})</div>
+    {notifs_html}"""
     return f"""
 <details class="test-block status-{t.status}">
   <summary class="test-summary">
@@ -314,6 +406,7 @@ def _render_test(t: TestCaseRecord) -> str:
     <span class="test-name">{t.name}</span>
     <span class="test-dur">{dur}</span>
     <span class="test-reqcount">{len(t.requests)} req</span>
+    {notif_badge}
   </summary>
   <div class="test-detail">
     {fail_html}
@@ -321,6 +414,7 @@ def _render_test(t: TestCaseRecord) -> str:
     <div class="requests-label">HTTP Traffic ({len(t.requests)} requests)</div>
     {reqs_html}
     {empty_reqs}
+    {notifs_section}
   </div>
 </details>"""
 
@@ -340,6 +434,7 @@ _CSS = """
   --fail: #f92672;
   --skip: #757571;
   --error: #ffef62;
+  --notif: #ae81ff;
   --radius: 14px;
   --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
   --font-ui: 'DM Sans', 'Segoe UI', sans-serif;
@@ -393,6 +488,7 @@ a { color: var(--accent); text-decoration: none; }
 .num-fail  { color: var(--fail); }
 .num-skip  { color: var(--skip); }
 .num-error { color: var(--error); }
+.num-notif { color: var(--notif); }
 
 /* Component overview */
 .section-header {
@@ -534,6 +630,8 @@ a { color: var(--accent); text-decoration: none; }
 .test-dur   { font-size: 11px; color: var(--text-dim); font-family: var(--font-mono); }
 .test-reqcount { font-size: 11px; color: var(--text); padding: 4px 10px;
                   background: rgba(183, 19, 79, 0.14); border: 1px solid rgba(249, 38, 114, 0.28); border-radius: 999px; }
+.test-notifcount { font-size: 11px; color: var(--notif); padding: 4px 10px;
+                    background: rgba(174, 129, 255, 0.12); border: 1px solid rgba(174, 129, 255, 0.30); border-radius: 999px; }
 .test-detail { padding: 16px; background: rgba(21, 21, 21, 0.8); }
 .fail-msg {
   background: rgba(249, 38, 114, 0.08);
@@ -592,6 +690,35 @@ a { color: var(--accent); text-decoration: none; }
 .proto-mqtt  { color: var(--pass); }
 .proto-ws    { color: #fd971f; }
 .proto-coap  { color: #ae81ff; }
+
+/* Notification blocks */
+.notif-block {
+  background: rgba(174, 129, 255, 0.05);
+  border: 1px solid rgba(174, 129, 255, 0.25);
+  border-radius: var(--radius);
+  margin: 8px 0;
+  overflow: hidden;
+}
+.notif-block[open] { border-color: rgba(174, 129, 255, 0.55); }
+.notif-summary {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+.notif-summary::-webkit-details-marker { display: none; }
+.notif-dir-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(174, 129, 255, 0.15);
+  color: var(--notif);
+  border: 1px solid rgba(174, 129, 255, 0.3);
+  white-space: nowrap;
+}
+.notif-label { color: var(--notif) !important; }
 
 /* HTTP Method Colors */
 .method-tag {
@@ -703,7 +830,7 @@ document.getElementById('expandAll').addEventListener('click', function() {
   document.querySelectorAll('.suite').forEach(s => {
     isExpand ? s.classList.add('open') : s.classList.remove('open');
   });
-  document.querySelectorAll('.test-block, .req-block').forEach(el => {
+  document.querySelectorAll('.test-block, .req-block, .notif-block').forEach(el => {
     isExpand ? el.setAttribute('open','') : el.removeAttribute('open');
   });
   this.dataset.state = isExpand ? 'open' : '';
@@ -745,25 +872,23 @@ function applyFilters() {
 
 def write_html(path: str, cse_info: dict | None = None) -> None:
     tests_all = get_all_tests()
-    # Only consider real unit tests for the summary counts
     tests = [t for t in tests_all if t.name.startswith("test_")]
     total = len(tests)
     n_pass = sum(1 for t in tests if t.status == "pass")
     n_fail = sum(1 for t in tests if t.status == "fail")
     n_skip = sum(1 for t in tests if t.status == "skip")
     n_error = sum(1 for t in tests if t.status == "error")
+    n_notif = sum(len(t.notifications) for t in tests)
 
     gen_at = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     comps = _component_summary(tests)
     ci = cse_info or {}
 
-    # Component ring grid
     rings_html = "".join(
         _health_ring(c["health"], c["component"], c["total"], c["fail"] + c["error"])
         for c in comps
     )
 
-    # Group tests by module (use only real tests for grouping)
     modules: dict[str, list[TestCaseRecord]] = {}
     for t in tests:
         modules.setdefault(t.module, []).append(t)
@@ -773,6 +898,12 @@ def write_html(path: str, cse_info: dict | None = None) -> None:
         pass_c = sum(1 for t in mod_tests if t.status == "pass")
         fail_c = sum(1 for t in mod_tests if t.status in ("fail", "error"))
         skip_c = sum(1 for t in mod_tests if t.status == "skip")
+        notif_c = sum(len(t.notifications) for t in mod_tests)
+        notif_stat = (
+            f'&nbsp;<span style="color:var(--notif)">📨 {notif_c}</span>'
+            if notif_c
+            else ""
+        )
         tests_html = "".join(_render_test(t) for t in mod_tests)
         suites_html += f"""
 <div class="suite">
@@ -786,12 +917,12 @@ def write_html(path: str, cse_info: dict | None = None) -> None:
       &nbsp;
       <span class="num-skip" style="color: var(--skip);">◌ {skip_c}</span>
       &nbsp;<span style="color: var(--text-dim);">/ {len(mod_tests)} total</span>
+      {notif_stat}
     </span>
   </div>
   <div class="suite-body">{tests_html}</div>
 </div>"""
 
-    # CSE info string
     cse_str = ""
     if ci:
         parts = [
@@ -799,6 +930,12 @@ def write_html(path: str, cse_info: dict | None = None) -> None:
             for k, v in ci.items()
         ]
         cse_str = " &nbsp;·&nbsp; ".join(parts)
+
+    notif_pill = (
+        f'<div class="stat-pill"><span class="num num-notif">{n_notif}</span> Notifications</div>'
+        if n_notif
+        else ""
+    )
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -824,6 +961,7 @@ def write_html(path: str, cse_info: dict | None = None) -> None:
     <div class="stat-pill"><span class="num num-error">{n_error}</span> Errors</div>
     <div class="stat-pill"><span class="num num-skip">{n_skip}</span> Skipped</div>
     <div class="stat-pill" style="border-color: rgba(249, 38, 114, 0.4);"><span class="num" style="color:var(--accent)">{total}</span> Total</div>
+    {notif_pill}
   </div>
 </div>
 

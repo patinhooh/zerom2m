@@ -77,7 +77,7 @@ void JsonCodec::GetStringArray(const JsonValue &obj, const char *key, Vector<CSt
 JsonValue *JsonCodec::MakeStringArray(const Vector<CString> &v) const
 {
     JsonValue *arr = new JsonValue(JSON_ARRAY);
-    for (size_t i = 0; i < v.size(); ++i)
+    for (size_t i = 0; i < v.GetCount(); ++i)
         arr->AppendElement(new JsonValue(v[i]));
     return arr;
 }
@@ -173,11 +173,14 @@ JsonValue *JsonCodec::SerializeContentInstance(const ContentInstance &r) const
         // as JSON when the first non-space character indicates a JSON value
         // (object, array, quoted string, digit, minus or literal starts).
         const char *p = r.content.c_str();
-        while (*p && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) ++p;
+        while (*p && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n'))
+            ++p;
         bool tryParse = false;
         if (*p) {
-            if (*p == '{' || *p == '[' || *p == '"' || *p == '-' || (*p >= '0' && *p <= '9')) tryParse = true;
-            else if (strncmp(p, "true", 4) == 0 || strncmp(p, "false", 5) == 0 || strncmp(p, "null", 4) == 0)
+            if (*p == '{' || *p == '[' || *p == '"' || *p == '-' || (*p >= '0' && *p <= '9'))
+                tryParse = true;
+            else if (strncmp(p, "true", 4) == 0 || strncmp(p, "false", 5) == 0 ||
+                     strncmp(p, "null", 4) == 0)
                 tryParse = true;
         }
         if (tryParse) {
@@ -194,6 +197,113 @@ JsonValue *JsonCodec::SerializeContentInstance(const ContentInstance &r) const
     }
     if (r.dataGenerationTime.has_value())
         obj->AddMember(attr::DATA_GENERATION_TIME, new JsonValue(*r.dataGenerationTime));
+
+    return obj;
+}
+
+JsonValue *JsonCodec::SerializeNotification(const Notification &n) const
+{
+    JsonValue *obj = new JsonValue(JSON_OBJECT);
+
+    obj->AddMember("sur", new JsonValue(n.subscriptionReference));
+
+    if (n.verificationRequest.has_value())
+        obj->AddMember("vrq", new JsonValue((boolean)*n.verificationRequest));
+
+    if (n.subscriptionDeletion.has_value())
+        obj->AddMember("sud", new JsonValue((boolean)*n.subscriptionDeletion));
+
+    if (n.creator.has_value()) obj->AddMember("cr", new JsonValue(*n.creator));
+
+    if (n.notificationForwardingURI.has_value())
+        obj->AddMember("nfu", new JsonValue(*n.notificationForwardingURI));
+
+    if (n.notificationTarget.has_value())
+        obj->AddMember("ntt", new JsonValue(*n.notificationTarget));
+
+    if (n.targetRemovalRequest.has_value())
+        obj->AddMember("trr", new JsonValue((boolean)*n.targetRemovalRequest));
+
+    if (n.targetRemovalAllowance.has_value())
+        obj->AddMember("tra", new JsonValue((boolean)*n.targetRemovalAllowance));
+
+    if (n.aeRegistrationPointChange.has_value())
+        obj->AddMember("aerp", new JsonValue((boolean)*n.aeRegistrationPointChange));
+
+    if (n.aeReferenceIDChange.has_value())
+        obj->AddMember("aerid", new JsonValue((boolean)*n.aeReferenceIDChange));
+
+    if (n.trackingID1.has_value()) obj->AddMember("tid1", new JsonValue(*n.trackingID1));
+    if (n.trackingID2.has_value()) obj->AddMember("tid2", new JsonValue(*n.trackingID2));
+    if (n.subscribedTo.has_value()) obj->AddMember("st", new JsonValue(*n.subscribedTo));
+
+    // nev
+    if (n.notificationEvent.has_value()) {
+        JsonValue *nevObj = new JsonValue(JSON_OBJECT);
+
+        nevObj->AddMember(
+            "net",
+            new JsonValue(static_cast<double>((u8)n.notificationEvent->notificationEventType)));
+
+        // om
+        if (n.notificationEvent->operationMonitor.has_value()) {
+            JsonValue *omObj = new JsonValue(JSON_OBJECT);
+            omObj->AddMember("op",
+                             new JsonValue(static_cast<double>(
+                                 (u8)n.notificationEvent->operationMonitor->operation)));
+            omObj->AddMember("org",
+                             new JsonValue(n.notificationEvent->operationMonitor->originator));
+            nevObj->AddMember("om", omObj);
+        }
+
+        if (n.notificationEvent->representation) {
+            JsonValue *repJson =
+                SerializePrimitiveContentValue(*n.notificationEvent->representation);
+
+            if (repJson) nevObj->AddMember("rep", repJson);
+        }
+
+        obj->AddMember("nev", nevObj);
+    }
+
+    //
+    // idr
+    //
+    if (n.ipeDiscoveryRequest.has_value()) {
+        JsonValue *idrObj = new JsonValue(JSON_OBJECT);
+
+        idrObj->AddMember("org", new JsonValue(n.ipeDiscoveryRequest->originator));
+
+        JsonValue *fcObj = new JsonValue(JSON_OBJECT);
+
+        const auto &fc = n.ipeDiscoveryRequest->filterCriteria;
+
+        if (!fc.notificationEventType.empty()) {
+            JsonValue *arr = new JsonValue(JSON_ARRAY);
+
+            for (auto v : fc.notificationEventType)
+                arr->AppendElement(new JsonValue((double)(u8)v));
+
+            fcObj->AddMember("net", arr);
+        }
+
+        if (!fc.childResourceType.empty()) {
+            JsonValue *arr = new JsonValue(JSON_ARRAY);
+
+            for (auto v : fc.childResourceType)
+                arr->AppendElement(new JsonValue((double)(u8)v));
+
+            fcObj->AddMember("chty", arr);
+        }
+
+        if (!fc.attributeList.empty()) fcObj->AddMember("atr", MakeStringArray(fc.attributeList));
+
+        if (!fc.labels.empty()) fcObj->AddMember("lbl", MakeStringArray(fc.labels));
+
+        idrObj->AddMember("fc", fcObj);
+
+        obj->AddMember("idr", idrObj);
+    }
 
     return obj;
 }
@@ -261,10 +371,12 @@ JsonValue *JsonCodec::SerializeSubscription(const Subscription &r) const
         if (!enc.childResourceType.empty()) {
             JsonValue *chtyArr = new JsonValue(JSON_ARRAY);
             for (size_t i = 0; i < enc.childResourceType.size(); ++i)
-                chtyArr->AppendElement(new JsonValue(static_cast<double>((u8)enc.childResourceType[i])));
+                chtyArr->AppendElement(
+                    new JsonValue(static_cast<double>((u8)enc.childResourceType[i])));
             encObj->AddMember(dt::fc::CHILD_RESOURCE_TYPE, chtyArr);
         }
-        if (!enc.attributeList.empty()) encObj->AddMember(dt::fc::ATTRIBUTE, MakeStringArray(enc.attributeList));
+        if (!enc.attributeList.empty())
+            encObj->AddMember(dt::fc::ATTRIBUTE, MakeStringArray(enc.attributeList));
         if (!enc.labels.empty()) encObj->AddMember(dt::fc::LABELS, MakeStringArray(enc.labels));
 
         obj->AddMember(attr::EVENT_NOTIFICATION_CRITERIA, encObj);
@@ -570,8 +682,10 @@ boolean JsonCodec::SerializeResource(const ResourceBase &input, CString &output)
 boolean JsonCodec::SerializePrimitiveContent(const PrimitiveContent &input, CString &output) const
 {
     JsonValue *v = SerializePrimitiveContentValue(input);
+
     if (!v) return false;
     output = v->Serialize();
+
     delete v;
     return true;
 }
@@ -592,6 +706,7 @@ JsonValue *JsonCodec::SerializePrimitiveContentValue(const PrimitiveContent &inp
     TRY_RESOURCE(AE, "ae", SerializeAE)
     TRY_RESOURCE(Container, "cnt", SerializeContainer)
     TRY_RESOURCE(ContentInstance, "cin", SerializeContentInstance)
+    TRY_RESOURCE(Notification, "sgn", SerializeNotification)
     TRY_RESOURCE(Group, "grp", SerializeGroup)
     TRY_RESOURCE(Subscription, "sub", SerializeSubscription)
     TRY_RESOURCE(CSEBase, "cb", SerializeCSEBase)
@@ -617,38 +732,6 @@ JsonValue *JsonCodec::SerializePrimitiveContentValue(const PrimitiveContent &inp
         wrapKey.Append(shortName);
         JsonValue *wrapper = new JsonValue(JSON_OBJECT);
         wrapper->AddMember((const char *)wrapKey, inner);
-        return wrapper;
-    }
-
-    // non-resource wrappers
-    if (const auto *ul = input.GetIf<URIList>()) {
-        JsonValue *root = new JsonValue(JSON_OBJECT);
-        root->AddMember(dt::URI_LIST, MakeStringArray(ul->uris));
-        return root;
-    } else if (const auto *an = input.GetIf<AggregatedNotification>()) {
-        JsonValue *arr = new JsonValue(JSON_ARRAY);
-        for (size_t i = 0; i < an->notifications.size(); ++i)
-            arr->AppendElement(new JsonValue(an->notifications[i]));
-        JsonValue *root = new JsonValue(JSON_OBJECT);
-        root->AddMember(dt::AGGREGATED_NOTIFICATION, arr);
-        return root;
-    } else if (const auto *refs = input.GetIf<Vector<ChildResourceRef>>()) {
-        JsonValue *arr = new JsonValue(JSON_ARRAY);
-        for (size_t i = 0; i < refs->size(); ++i) {
-            const ChildResourceRef &ref    = (*refs)[i];
-            JsonValue              *refObj = new JsonValue(JSON_OBJECT);
-            refObj->AddMember(dt::NAME, new JsonValue(ref.name));
-            refObj->AddMember(dt::TYPE, new JsonValue(static_cast<double>((u32)ref.type)));
-            refObj->AddMember(dt::VALUE, new JsonValue(ref.value));
-            arr->AppendElement(refObj);
-        }
-        // Tests expect discovery results to be wrapped as `m2m:rrl` with an
-        // inner `rrf` array. Build that structure here so consumers see
-        // `m2m:rrl/rrf` as expected.
-        JsonValue *rrfObj = new JsonValue(JSON_OBJECT);
-        rrfObj->AddMember("rrf", arr);
-        JsonValue *wrapper = new JsonValue(JSON_OBJECT);
-        wrapper->AddMember("m2m:rrl", rrfObj);
         return wrapper;
     }
     return nullptr;
@@ -787,6 +870,100 @@ boolean JsonCodec::DeserializeContentInstance(const JsonValue &root, RequestPrim
     return true;
 }
 
+boolean JsonCodec::DeserializeNotification(const JsonValue &root, RequestPrimitive &out) const
+{
+    const JsonValue *sgn = root.GetMember("m2m:sgn");
+    if (!sgn) return false;
+
+    Notification n;
+
+    n.subscriptionReference = GetString(*sgn, "sur");
+
+    GetOptBool(*sgn, "vrq", n.verificationRequest);
+    GetOptBool(*sgn, "sud", n.subscriptionDeletion);
+
+    GetOptString(*sgn, "cr", n.creator);
+    GetOptString(*sgn, "nfu", n.notificationForwardingURI);
+    GetOptString(*sgn, "ntt", n.notificationTarget);
+
+    GetOptBool(*sgn, "trr", n.targetRemovalRequest);
+    GetOptBool(*sgn, "tra", n.targetRemovalAllowance);
+
+    GetOptBool(*sgn, "aerp", n.aeRegistrationPointChange);
+    GetOptBool(*sgn, "aerid", n.aeReferenceIDChange);
+
+    GetOptString(*sgn, "tid1", n.trackingID1);
+    GetOptString(*sgn, "tid2", n.trackingID2);
+
+    GetOptString(*sgn, "st", n.subscribedTo);
+
+    //
+    // nev
+    //
+    if (const JsonValue *nevObj = sgn->GetMember("nev")) {
+        NotificationEvent nev;
+
+        const JsonValue *netV = nevObj->GetMember("net");
+        if (netV) {
+            auto v = netV->GetNumber();
+            if (v.has_value()) {
+                nev.notificationEventType = static_cast<NotificationEventType>(static_cast<u8>(*v));
+            }
+        }
+
+        //
+        // om
+        //
+        if (const JsonValue *omObj = nevObj->GetMember("om")) {
+            OperationMonitor om;
+
+            om.originator = GetString(*omObj, "org");
+
+            const JsonValue *opV = omObj->GetMember("op");
+            if (opV) {
+                auto v = opV->GetNumber();
+                if (v.has_value()) { om.operation = static_cast<Operation>(static_cast<u8>(*v)); }
+            }
+
+            nev.operationMonitor = om;
+        }
+
+        //
+        // rep
+        //
+        if (const JsonValue *repObj = nevObj->GetMember("rep")) {
+            const CString *repJson = repObj->GetString();
+
+            RequestPrimitive tmpReq;
+
+            if (DeserializeRequestBody(*repJson, tmpReq)) {
+                PrimitiveContent repContent = tmpReq.content;
+                nev.representation          = &repContent;
+            }
+        }
+
+        n.notificationEvent = nev;
+    }
+
+    //
+    // idr
+    //
+    if (const JsonValue *idrObj = sgn->GetMember("idr")) {
+        IPEDiscoveryRequest idr;
+
+        idr.originator = GetString(*idrObj, "org");
+
+        if (const JsonValue *fcObj = idrObj->GetMember("fc")) {
+            ParseEventNotificationCriteria(*fcObj, idr.filterCriteria);
+        }
+
+        n.ipeDiscoveryRequest = idr;
+    }
+
+    out.content = n;
+    return true;
+}
+
 boolean JsonCodec::DeserializeGroup(const JsonValue &root, RequestPrimitive &out) const
 {
     const JsonValue *grp = root.GetMember("m2m:grp");
@@ -823,7 +1000,7 @@ boolean JsonCodec::DeserializeSubscription(const JsonValue &root, RequestPrimiti
     GetStringArray(*sub, attr::NOTIFICATION_URI, r.notificationURI);
     const JsonValue *bnObj = sub->GetMember(attr::BATCH_NOTIFY);
     if (bnObj) {
-        BatchNotify bn;
+        BatchNotify      bn;
         const JsonValue *numV = bnObj->GetMember(dt::NUMBER);
         if (numV) {
             auto n = numV->GetNumber();
@@ -848,7 +1025,7 @@ boolean JsonCodec::DeserializeSubscription(const JsonValue &root, RequestPrimiti
             out.vendorInformation = CString("sub_creator_null");
         } else {
             out.vendorInformation = CString("sub_creator_present");
-            const CString *s = cr->GetString();
+            const CString *s      = cr->GetString();
             if (s) r.creator = *s;
         }
     }
@@ -860,7 +1037,8 @@ boolean JsonCodec::DeserializeSubscription(const JsonValue &root, RequestPrimiti
     // service can decide compatibility for blocking-update subscriptions.
     if (const JsonValue *nctV = sub->GetMember(attr::NOTIFICATION_CONTENT_TYPE)) {
         auto n = nctV->GetNumber();
-        if (n.has_value()) r.notificationContentType = static_cast<NotificationContentType>(static_cast<u8>(*n));
+        if (n.has_value())
+            r.notificationContentType = static_cast<NotificationContentType>(static_cast<u8>(*n));
     }
 
     out.content = r;
@@ -922,8 +1100,7 @@ boolean JsonCodec::ParseEventNotificationCriteria(const JsonValue           &enc
             if (n) {
                 auto v = n->GetNumber();
                 if (v.has_value())
-                    enc.childResourceType.push_back(
-                        static_cast<ResourceType>(static_cast<u8>(*v)));
+                    enc.childResourceType.push_back(static_cast<ResourceType>(static_cast<u8>(*v)));
             }
         }
     }
@@ -971,15 +1148,13 @@ boolean JsonCodec::DeserializeRequestBody(const CString &input, RequestPrimitive
     if (input.GetLength() == 0) return false;
 
     JsonValue *root = JsonDocument::Parse(input.c_str());
-    // CLogger::Get()->Write(
-    //     "JsonCodec", LogDebug, "DeserializeRequestBody: parsed JSON:\n%s", root ?
-    //     root->Serialize().c_str() : "(null)");
     if (!root) return false;
 
     boolean ok = false;
     if (root->GetMember("m2m:ae")) ok = DeserializeAE(*root, out);
     else if (root->GetMember("m2m:cnt")) ok = DeserializeContainer(*root, out);
     else if (root->GetMember("m2m:cin")) ok = DeserializeContentInstance(*root, out);
+    else if (root->GetMember("m2m:sgn")) ok = DeserializeNotification(*root, out);
     else if (root->GetMember("m2m:grp")) ok = DeserializeGroup(*root, out);
     else if (root->GetMember("m2m:sub")) ok = DeserializeSubscription(*root, out);
     else if (root->GetMember("m2m:ts")) ok = DeserializeTimeSeries(*root, out);
@@ -1015,6 +1190,75 @@ boolean JsonCodec::DeserializeRequestPrimitive(const CString &input, RequestPrim
         }
         ok = true;
     }
+
+    delete doc;
+    return ok;
+}
+
+boolean JsonCodec::DeserializeResponseBody(const CString &input, ResponsePrimitive &out) const
+{
+    if (input.GetLength() == 0) return false;
+
+    JsonValue *root = JsonDocument::Parse(input.c_str());
+    if (!root) return false;
+
+    boolean ok = false;
+
+    RequestPrimitive tmp;
+
+    if (root->GetMember("m2m:ae")) ok = DeserializeAE(*root, tmp);
+    else if (root->GetMember("m2m:cnt")) ok = DeserializeContainer(*root, tmp);
+    else if (root->GetMember("m2m:cin")) ok = DeserializeContentInstance(*root, tmp);
+    else if (root->GetMember("m2m:sgn")) ok = DeserializeNotification(*root, tmp);
+    else if (root->GetMember("m2m:grp")) ok = DeserializeGroup(*root, tmp);
+    else if (root->GetMember("m2m:sub")) ok = DeserializeSubscription(*root, tmp);
+    else if (root->GetMember("m2m:ts")) ok = DeserializeTimeSeries(*root, tmp);
+
+    if (ok) { out.content = tmp.content; }
+
+    delete root;
+    return ok;
+}
+
+boolean JsonCodec::DeserializeResponsePrimitive(const CString &input, ResponsePrimitive &out) const
+{
+    if (input.GetLength() == 0) return false;
+
+    JsonValue *doc = JsonDocument::Parse(input.c_str());
+    if (!doc) return false;
+
+    boolean ok = false;
+
+    const JsonValue *rsp = doc->GetMember(root::RESPONSE_PRIMITIVE);
+    const JsonValue &obj = rsp ? *rsp : *doc;
+
+    // rsc
+    if (const JsonValue *rscV = obj.GetMember(prim::RESPONSE_STATUS_CODE)) {
+        auto n = rscV->GetNumber();
+        if (n.has_value()) {
+            out.responseStatusCode = static_cast<ResponseStatusCode>(static_cast<u32>(*n));
+        }
+    }
+
+    // mandatory/common fields
+    out.to                = GetString(obj, prim::TO);
+    out.from              = GetString(obj, prim::FROM);
+    out.requestIdentifier = GetString(obj, prim::REQUEST_IDENTIFIER);
+
+    // optional fields
+    GetOptString(obj, prim::ORIGINATING_TIMESTAMP, out.originatingTimestamp);
+
+    GetOptString(obj, prim::RELEASE_VERSION_INDICATOR, out.releaseVersionIndicator);
+
+    GetOptString(obj, prim::VENDOR_INFORMATION, out.vendorInformation);
+
+    // pc
+    if (const JsonValue *pc = obj.GetMember(prim::CONTENT)) {
+        CString pcStr = pc->Serialize();
+        DeserializeResponseBody(pcStr, out);
+    }
+
+    ok = true;
 
     delete doc;
     return ok;

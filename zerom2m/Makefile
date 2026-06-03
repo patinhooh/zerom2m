@@ -90,7 +90,7 @@ test:
 		echo 'Please specify a test to run with TESTS="test1.py test2.py ..."'; \
 		exit 1; \
 	fi
-	@cd ../third_party/acme/ && uv run runTests.py $(TESTS) -v --no-failfast
+	@cd ../third_party/acme/ && uv run runTests.py $(TESTS) -v #--no-failfast
 
 test-all:
 	@cd ../third_party/acme/ && uv run runTests.py testCSE.py testAE.py testCNT.py testCIN.py testCNT_CIN.py testAddressing.py testSUB.py -v  --no-failfast

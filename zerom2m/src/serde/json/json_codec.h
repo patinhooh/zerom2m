@@ -31,6 +31,14 @@ public:
 
     boolean DeserializeRequestBody(const CString &input, RequestPrimitive &output) const override;
 
+    boolean DeserializeRequestPrimitive(const CString    &input,
+                                        RequestPrimitive &output) const override;
+
+    boolean DeserializeResponseBody(const CString &input, ResponsePrimitive &output) const override;
+
+    boolean DeserializeResponsePrimitive(const CString     &input,
+                                         ResponsePrimitive &output) const override;
+
     boolean SerializeResource(const ResourceBase &input, CString &output) const override;
 
     boolean SerializePrimitiveContent(const PrimitiveContent &input,
@@ -38,9 +46,6 @@ public:
 
     boolean SerializeResponsePrimitive(const ResponsePrimitive &input,
                                        CString                 &output) const override;
-
-    boolean DeserializeRequestPrimitive(const CString    &input,
-                                        RequestPrimitive &output) const override;
 
 private:
     JsonCodec() = default;
@@ -51,6 +56,7 @@ private:
     JsonValue *SerializeAE(const AE &r) const;
     JsonValue *SerializeContainer(const Container &r) const;
     JsonValue *SerializeContentInstance(const ContentInstance &r) const;
+    JsonValue *SerializeNotification(const Notification &r) const;
     JsonValue *SerializeGroup(const Group &r) const;
     JsonValue *SerializeSubscription(const Subscription &r) const;
     JsonValue *SerializeCSEBase(const CSEBase &r) const;
@@ -69,6 +75,7 @@ private:
     boolean DeserializeAE(const JsonValue &root, RequestPrimitive &out) const;
     boolean DeserializeContainer(const JsonValue &root, RequestPrimitive &out) const;
     boolean DeserializeContentInstance(const JsonValue &root, RequestPrimitive &out) const;
+    boolean DeserializeNotification(const JsonValue &root, RequestPrimitive &out) const;
     boolean DeserializeGroup(const JsonValue &root, RequestPrimitive &out) const;
     boolean DeserializeSubscription(const JsonValue &root, RequestPrimitive &out) const;
     boolean DeserializeTimeSeries(const JsonValue &root, RequestPrimitive &out) const;

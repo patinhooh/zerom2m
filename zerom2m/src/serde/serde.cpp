@@ -82,6 +82,24 @@ boolean SerDe::DeserializeRequestPrimitive(const CString    &input,
     return codec->DeserializeRequestPrimitive(input, output);
 }
 
+boolean SerDe::DeserializeResponseBody(const CString     &input,
+                                       const CString     &mimeType,
+                                       ResponsePrimitive &output) const
+{
+    const ICodec *codec = CodecForMime(NormalizeMimeType(mimeType));
+    if (!codec) return false;
+    return codec->DeserializeResponseBody(input, output);
+}
+
+boolean SerDe::DeserializeResponsePrimitive(const CString     &input,
+                                            const CString     &mimeType,
+                                            ResponsePrimitive &output) const
+{
+    const ICodec *codec = CodecForMime(NormalizeMimeType(mimeType));
+    if (!codec) return false;
+    return codec->DeserializeResponsePrimitive(input, output);
+}
+
 boolean
 SerDe::SerializeResource(const ResourceBase &input, const CString &mimeType, CString &output) const
 {

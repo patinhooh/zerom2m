@@ -24,7 +24,6 @@ namespace zerom2m::http
 namespace
 {
 const char FromHttpClient[] = "http_client";
-const char UserAgent[]      = "ZeroM2M-HttpClient/1.0";
 
 } // namespace
 
@@ -50,35 +49,16 @@ bool HttpClient::Get(const char *path, HttpResponse &response)
 {
     HttpRequest request;
     request.Method = RequestMethod::GET;
-    request.Path   = {path, path != nullptr ? strlen(path) : 0};
+    request.Path   = path;
     return Request(request, response);
 }
 
-bool HttpClient::Post(const char *path, const u8 *body, size_t bodyLength, HttpResponse &response)
+bool HttpClient::Post(const char *path, const CString &body, size_t bodyLength, HttpResponse &response)
 {
     HttpRequest request;
     request.Method     = RequestMethod::POST;
-    request.Path       = {path, path != nullptr ? strlen(path) : 0};
+    request.Path       = path;
     request.Body       = body;
-    request.BodyLength = bodyLength;
-    return Request(request, response);
-}
-
-bool HttpClient::Request(RequestMethod     method,
-                         const char       *path,
-                         const HttpHeader *headers,
-                         size_t            headerCount,
-                         const u8         *body,
-                         size_t            bodyLength,
-                         HttpResponse     &response)
-{
-    HttpRequest request;
-    request.Method      = method;
-    request.Path        = {path, path != nullptr ? strlen(path) : 0};
-    request.Headers     = headers;
-    request.HeaderCount = headerCount;
-    request.Body        = body;
-    request.BodyLength  = bodyLength;
     return Request(request, response);
 }
 
@@ -100,7 +80,8 @@ bool HttpClient::Request(const HttpRequest &request, HttpResponse &response)
     if (host.GetLength() == 0) { serverIP_.Format(&host); }
 
     CString header;
-    HttpCodec::SerializeRequest(request, header, static_cast<const char *>(host), UserAgent);
+    CString userAgent = SERVER_NAME;
+    HttpCodec::SerializeRequest(request, header, host, userAgent);
 
     CSocket *socket = new CSocket(netSubSystem_, IPPROTO_TCP);
     if (socket == nullptr) {
@@ -125,8 +106,8 @@ bool HttpClient::Request(const HttpRequest &request, HttpResponse &response)
         return false;
     }
 
-    if (request.Body != nullptr && request.BodyLength > 0 &&
-        socket->Send(request.Body, static_cast<unsigned>(request.BodyLength), 0) < 0) {
+    if (request.Body.GetLength() > 0 &&
+        socket->Send((const char *)request.Body, request.Body.GetLength(), 0) < 0) {
         delete socket;
         response.Status = ResponseStatus::BadGateway;
         return false;
@@ -150,7 +131,7 @@ bool HttpClient::Request(const HttpRequest &request, HttpResponse &response)
                                 static_cast<unsigned>(receiveCapacity - totalReceived),
                                 0);
         if (n < 0) {
-            CLogger::Get()->Write(FromHttpClient, LogWarning, "Receive failed (n<0)");
+            CLogger::Get()->Write(FromHttpClient, LogWarning, "Request: Receive failed (n<0)");
             if (totalReceived == 0) {
                 delete[] buffer;
                 delete socket;
@@ -185,7 +166,7 @@ bool HttpClient::Request(const HttpRequest &request, HttpResponse &response)
 
     if (!ok) {
         response.Status = ResponseStatus::BadGateway;
-        response.ClearBody();
+        response.Body = "";
         return false;
     }
 
@@ -205,7 +186,9 @@ bool HttpClient::RequestHeadersOnly(const HttpRequest &request, HttpResponse &re
     if (host.GetLength() == 0) { serverIP_.Format(&host); }
 
     CString header;
-    HttpCodec::SerializeRequest(request, header, static_cast<const char *>(host), UserAgent);
+    CString userAgent = SERVER_NAME;
+
+    HttpCodec::SerializeRequest(request, header, host, userAgent);
 
     CSocket *socket = new CSocket(netSubSystem_, IPPROTO_TCP);
     if (socket == nullptr) {
@@ -230,8 +213,8 @@ bool HttpClient::RequestHeadersOnly(const HttpRequest &request, HttpResponse &re
         return false;
     }
 
-    if (request.Body != nullptr && request.BodyLength > 0 &&
-        socket->Send(request.Body, static_cast<unsigned>(request.BodyLength), 0) < 0) {
+    if (request.Body.GetLength() > 0 &&
+        socket->Send((const char *)request.Body, request.Body.GetLength(), 0) < 0) {
         delete socket;
         response.Status = ResponseStatus::BadGateway;
         return false;
@@ -252,7 +235,7 @@ bool HttpClient::RequestHeadersOnly(const HttpRequest &request, HttpResponse &re
                                 static_cast<unsigned>(receiveCapacity - totalReceived),
                                 0);
         if (n < 0) {
-            CLogger::Get()->Write(FromHttpClient, LogWarning, "Receive failed (n<0)");
+            CLogger::Get()->Write(FromHttpClient, LogWarning, "RequestHeadersOnly: Receive failed (n<0)");
             if (totalReceived == 0) {
                 delete[] buffer;
                 delete socket;

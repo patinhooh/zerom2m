@@ -13,6 +13,7 @@
 #include <zerom2m/http/http_handler.h>
 #include <zerom2m/http/types.h>
 #include <zerom2m/onem2m/onem2m_service.h>
+#include <zerom2m/onem2m/binding.h>
 #include <zerom2m/onem2m/types/resources.h>
 #include <zerom2m/serde/serde.h>
 
@@ -32,11 +33,12 @@ struct ParsedContentType {
     Optional<ResourceType> ty;
 };
 
-class HttpAdapter : public IHttpHandler
+class HttpAdapter : public IHttpHandler, public IBinding
 {
 public:
     HttpResponse HandleRequest(const HttpRequest &req) override;
 
+    bool SendNotification(const RequestPrimitive &request, CNetSubSystem *net) override;
 private:
     HttpRequest       encodeRequest(const RequestPrimitive &prim,
                                     const CString          &baseUrl    = "",
@@ -56,7 +58,6 @@ private:
     Operation     methodToOperation(RequestMethod m, boolean hasResourceType = false);
 
     ResponseStatus     rscToHttpStatus(ResponseStatusCode rsc);
-    ResponseStatusCode httpStatusToRsc(ResponseStatus httpStatus);
 };
 
 } // namespace zerom2m::onem2m::bindings::http

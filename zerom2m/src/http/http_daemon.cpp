@@ -73,6 +73,7 @@ void HttpDaemon::Run(void)
     } else {
         Worker();
     }
+    CLogger::Get()->Write(FromHttpDaemon, LogDebug, "Worker %u finished", instanceCount_ - 1);
 }
 
 void HttpDaemon::WriteAccessLog(const CIPAddress &remoteIP,
@@ -123,12 +124,12 @@ void HttpDaemon::WriteAccessLog(const CIPAddress &remoteIP,
 
     CLogger::Get()->Write(FromHttpDaemon,
                           LogDebug,
-                          "%s \"%s %s\" %u %u",
-                          (const char *)IPString,
+                          "%s %u %u %s '%s'",
                           method,
-                          requestURI,
                           status,
-                          contentLength);
+                          contentLength,
+                          (const char *)IPString,
+                          requestURI);
 }
 
 void HttpDaemon::Listener(void)
@@ -258,13 +259,17 @@ void HttpDaemon::Worker(void)
     ResponseStatus status = HttpCodec::ParseRequest(pBuf, totalRecv, request);
     if (status != ResponseStatus::OK) {
         HttpResponse resp;
-        resp.Status     = status;
-        resp.Body       = nullptr;
-        resp.BodyLength = 0;
+        resp.Status = status;
+        resp.Body   = "";
+
         CString header;
         HttpCodec::SerializeResponse(resp, header);
-        socket_->Send((const char *)header, header.GetLength(), MSG_DONTWAIT);
-        CLogger::Get()->Write(FromHttpDaemon, LogWarning, "Parse failed status=%u", status);
+
+        socket_->Send(header.c_str(), header.GetLength(), MSG_DONTWAIT);
+
+        CLogger::Get()->Write(
+            FromHttpDaemon, LogWarning, "Parse failed status=%u", (unsigned)status);
+
         delete[] pBuf;
         delete socket_;
         socket_ = nullptr;
@@ -272,102 +277,40 @@ void HttpDaemon::Worker(void)
     }
 
     HttpResponse response;
+
     if (handler_) {
-        // Parse query string into QueryParams so handlers can read rcn, rp, etc.
-        QueryParam *ownedParams = nullptr;
-        size_t      paramCount  = 0;
-        if (request.Query.Data && request.Query.Length > 0) {
-            // Count parameters (split on '&')
-            const char *q = request.Query.Data;
-            // make writable within pBuf - ParseRequestLine ensured null-termination
-            // Count params
-            paramCount = 1;
-            for (const char *c = q; *c; ++c)
-                if (*c == '&') ++paramCount;
-            ownedParams = new QueryParam[paramCount];
-
-            size_t idx = 0;
-            char  *p   = const_cast<char *>(q);
-            while (p && *p && idx < paramCount) {
-                char *name = p;
-                char *eq   = strchr(p, '=');
-                char *amp  = strchr(p, '&');
-                if (eq == nullptr) {
-                    // name only
-                    if (amp) {
-                        *amp                          = '\0';
-                        ownedParams[idx].Name.Data    = name;
-                        ownedParams[idx].Name.Length  = strlen(name);
-                        ownedParams[idx].Value.Data   = nullptr;
-                        ownedParams[idx].Value.Length = 0;
-                        p                             = amp + 1;
-                    } else {
-                        ownedParams[idx].Name.Data    = name;
-                        ownedParams[idx].Name.Length  = strlen(name);
-                        ownedParams[idx].Value.Data   = nullptr;
-                        ownedParams[idx].Value.Length = 0;
-                        p                             = nullptr;
-                    }
-                } else {
-                    // name=value
-                    *eq       = '\0';
-                    char *val = eq + 1;
-                    if (amp) {
-                        *amp                          = '\0';
-                        ownedParams[idx].Name.Data    = name;
-                        ownedParams[idx].Name.Length  = strlen(name);
-                        ownedParams[idx].Value.Data   = val;
-                        ownedParams[idx].Value.Length = strlen(val);
-                        p                             = amp + 1;
-                    } else {
-                        ownedParams[idx].Name.Data    = name;
-                        ownedParams[idx].Name.Length  = strlen(name);
-                        ownedParams[idx].Value.Data   = val;
-                        ownedParams[idx].Value.Length = strlen(val);
-                        p                             = nullptr;
-                    }
-                }
-                ++idx;
-            }
-            // attach to request for handler to use
-            request.QueryParams     = ownedParams;
-            request.QueryParamCount = paramCount;
-        }
-
         response = handler_->HandleRequest(request);
-
-        if (ownedParams) {
-            delete[] ownedParams;
-            request.QueryParams     = nullptr;
-            request.QueryParamCount = 0;
-        }
     } else {
-        response.Status     = ResponseStatus::InternalServerError;
-        response.Body       = nullptr;
-        response.BodyLength = 0;
+        response.Status = ResponseStatus::InternalServerError;
+        response.Body   = "";
     }
 
     const u8 *pClientIP = socket_->GetForeignIP();
+
     if (pClientIP != 0) {
-        CIPAddress  ClientIP(pClientIP);
-        const char *target = request.Target.Data ? request.Target.Data : "";
-        WriteAccessLog(
-            ClientIP, request.Method, target, response.Status, (unsigned)response.BodyLength);
+        CIPAddress clientIP(pClientIP);
+
+        WriteAccessLog(clientIP,
+                       request.Method,
+                       request.Target.c_str(),
+                       response.Status,
+                       (unsigned)response.Body.GetLength());
     }
 
     CString header;
     HttpCodec::SerializeResponse(response, header);
-    if (socket_->Send((const char *)header, header.GetLength(), MSG_DONTWAIT) < 0) {
+
+    if (socket_->Send(header.c_str(), header.GetLength(), MSG_DONTWAIT) < 0) {
         CLogger::Get()->Write(FromHttpDaemon, LogError, "Cannot send response header");
+
         delete[] pBuf;
         delete socket_;
         socket_ = nullptr;
         return;
     }
 
-    if (request.Method != RequestMethod::HEAD && response.BodyLength > 0 &&
-        response.Body != nullptr) {
-        if (socket_->Send(response.Body, response.BodyLength, MSG_DONTWAIT) < 0) {
+    if (request.Method != RequestMethod::HEAD && response.Body.GetLength() > 0) {
+        if (socket_->Send(response.Body.c_str(), response.Body.GetLength(), MSG_DONTWAIT) < 0) {
             CLogger::Get()->Write(FromHttpDaemon, LogError, "Cannot send response body");
         }
     }

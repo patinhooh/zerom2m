@@ -90,11 +90,12 @@ void SystemManager::StartServices()
     // the Circle scheduler automatically.
 
     // Make sure the service is initialized before we start.
-    onem2m::OneM2MService::Get().Initialize(config_);
-    onem2m::OneM2MService::Get().SetNetSubSystem(networkManager_.GetNetSubSystem());
+    onem2m::bindings::http::HttpAdapter *httpBinding = new onem2m::bindings::http::HttpAdapter();
+    onem2m::OneM2MService::Get().Initialize(
+        config_, networkManager_.GetNetSubSystem(), *httpBinding);
 
     new tasks::BlinkTask(&scheduler_, &led_, 1000);
-    new tasks::HttpServer(&networkManager_.GetNetSubSystem(), &led_, &config_);
+    new tasks::HttpServer(&networkManager_.GetNetSubSystem(), httpBinding, &led_, &config_);
 }
 
 } // namespace zerom2m::kernel

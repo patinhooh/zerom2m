@@ -42,16 +42,21 @@ void Router::Register(RequestMethod method, const char *pathPrefix, IHttpHandler
     r.handler = handler;
 }
 
-static bool PathMatches(const CString &prefix, bool wildcard, const StringView &path)
+static bool PathMatches(const CString &prefix, bool wildcard, const CString &path)
 {
     size_t prefixLen = prefix.GetLength();
+    size_t pathLen   = path.GetLength();
+
+    if (pathLen == 0) return false;
+
+    const char *pPath = path.c_str();
+    const char *pPref = prefix.c_str();
+
     if (wildcard) {
-        if (path.Data == nullptr) return false;
-        if (path.Length < prefixLen) return false;
-        return memcmp((const char *)prefix, path.Data, prefixLen) == 0;
+        if (pathLen < prefixLen) return false;
+        return memcmp(pPref, pPath, prefixLen) == 0;
     } else {
-        if (path.Data == nullptr) return false;
-        return path.Length == prefixLen && memcmp((const char *)prefix, path.Data, prefixLen) == 0;
+        return (pathLen == prefixLen) && (memcmp(pPref, pPath, prefixLen) == 0);
     }
 }
 
