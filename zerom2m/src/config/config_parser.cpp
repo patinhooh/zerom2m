@@ -135,6 +135,7 @@ void ConfigParser::ParseLine(const char *section, char *line)
         if (strcmp(key, "hostname") == 0) config_.system.hostname = value;
         else if (strcmp(key, "clean_db_on_boot") == 0)
             config_.system.clean_db_on_boot = ParseBool(value);
+        else if (strcmp(key, "p2p_task") == 0) config_.system.p2p_task = (u8)atoi(value);
         else logger_.Write(FromConfigParser, LogWarning, "Unknown system config key: '%s'", key);
     }
     // unknown section
@@ -228,8 +229,6 @@ void ConfigParser::DumpConfig()
     logger_.Write(
         FromConfigParser, LogDebug, "http.timeout_seconds = %u", config_.http.timeout_seconds);
     logger_.Write(FromConfigParser, LogDebug, "http.max_clients = %u", config_.http.max_clients);
-    logger_.Write(
-        FromConfigParser, LogDebug, "system.hostname = %s", (const char *)config_.system.hostname);
     logger_.Write(FromConfigParser,
                   LogDebug,
                   "cse.resource_name = %s",
@@ -238,10 +237,13 @@ void ConfigParser::DumpConfig()
         FromConfigParser, LogDebug, "cse.resource_id = %s", (const char *)config_.cse.resource_id);
     logger_.Write(FromConfigParser, LogDebug, "cse.cse_id = %s", (const char *)config_.cse.cse_id);
     logger_.Write(FromConfigParser, LogDebug, "cse.sp_id = %s", (const char *)config_.cse.sp_id);
+    logger_.Write(
+        FromConfigParser, LogDebug, "system.hostname = %s", (const char *)config_.system.hostname);
     logger_.Write(FromConfigParser,
                   LogDebug,
                   "system.clean_db_on_boot = %s",
                   config_.system.clean_db_on_boot ? "true" : "false");
+    logger_.Write(FromConfigParser, LogDebug, "system.p2p_task = %u", config_.system.p2p_task);
 }
 
 bool ConfigParser::ParseIPv4(const char *value, u8 out[4])

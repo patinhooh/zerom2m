@@ -48,6 +48,7 @@ struct SystemConfig {
     struct {
         CString hostname;
         bool clean_db_on_boot;
+        u8 p2p_task;
     } system;
 
     SystemConfig()
@@ -65,13 +66,14 @@ struct SystemConfig {
         http.timeout_seconds  = http::TIMEOUT_SECONDS;
         http.max_clients      = http::MAX_CLIENTS;
 
-        cse.resource_name = "m2m";
-        cse.resource_id   = "m2m";
-        cse.cse_id        = "m2m";
+        cse.resource_name = "zerom2m";
+        cse.resource_id   = "zerom2m";
+        cse.cse_id        = "/zerom2m";
         cse.sp_id         = "zerom2m.example.com";
 
         system.hostname = "zerom2m";
         system.clean_db_on_boot = false;
+        system.p2p_task = 0;
     }
 };
 

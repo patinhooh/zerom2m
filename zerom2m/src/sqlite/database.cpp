@@ -388,6 +388,7 @@ bool Database::InsertResources(const ResourceBase &rbase, CString &err)
 
     CString path;
     if (rbase.parentID.GetLength() == 0) {
+        // CSEBase case
         path += rbase.resourceName;
     } else {
         CString parentPath = GetFullPathByRI(rbase.parentID);
@@ -1486,7 +1487,8 @@ bool Database::LoadOldestChild(const CString &target,
 bool Database::GetCSEBase(CSEBase &out, CString &err)
 {
     PrimitiveContent pc;
-    if (!LoadPrimitiveContentByTarget(CString("m2m"), pc, err)) return false;
+    // FIXME: hard coded ... cse_id - /
+    if (!LoadPrimitiveContentByTarget("zerom2m", pc, err)) return false;
     if (auto c = pc.GetIf<CSEBase>()) {
         out = *c;
         return true;

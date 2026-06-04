@@ -21,7 +21,7 @@ namespace zerom2m::http
 {
 
 static constexpr unsigned DEFAULT_PORT     = 80u;
-static constexpr unsigned MAX_CONTENT_SIZE = 2048u;
+static constexpr unsigned MAX_CONTENT_SIZE = 4096u;
 static constexpr unsigned MAX_CLIENTS      = 10u;
 static constexpr unsigned TIMEOUT_SECONDS  = 10u;
 static constexpr size_t   MAX_HEADERS      = 16;

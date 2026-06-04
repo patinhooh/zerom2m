@@ -932,13 +932,23 @@ boolean JsonCodec::DeserializeNotification(const JsonValue &root, RequestPrimiti
         // rep
         //
         if (const JsonValue *repObj = nevObj->GetMember("rep")) {
-            const CString *repJson = repObj->GetString();
 
+            boolean          ok = false;
             RequestPrimitive tmpReq;
+            if (repObj->GetMember("m2m:ae")) ok = DeserializeAE(*repObj, tmpReq);
+            else if (repObj->GetMember("m2m:cnt")) ok = DeserializeContainer(*repObj, tmpReq);
+            else if (repObj->GetMember("m2m:cin")) ok = DeserializeContentInstance(*repObj, tmpReq);
+            else if (repObj->GetMember("m2m:sgn")) ok = DeserializeNotification(*repObj, tmpReq);
+            else if (repObj->GetMember("m2m:grp")) ok = DeserializeGroup(*repObj, tmpReq);
+            else if (repObj->GetMember("m2m:sub")) ok = DeserializeSubscription(*repObj, tmpReq);
+            else if (repObj->GetMember("m2m:ts")) ok = DeserializeTimeSeries(*repObj, tmpReq);
+            else {
+                CLogger::Get()->Write(
+                    "JsonCodec", LogDebug, "DeserializeRequestBody: unrecognized JSON payload");
+            }
 
-            if (DeserializeRequestBody(*repJson, tmpReq)) {
-                PrimitiveContent repContent = tmpReq.content;
-                nev.representation          = &repContent;
+            if (ok) {
+                nev.representation = new PrimitiveContent(tmpReq.content);
             }
         }
 

@@ -48,7 +48,7 @@ public:
     bool RequestHeadersOnly(const HttpRequest &request, HttpResponse &response);
 
     bool Get(const char *path, HttpResponse &response);
-    bool Post(const char *path, const CString &body, size_t bodyLength, HttpResponse &response);
+    bool Post(const char *path, const CString &body, HttpResponse &response);
 
     void SetTimeoutSeconds(unsigned timeoutSeconds);
 

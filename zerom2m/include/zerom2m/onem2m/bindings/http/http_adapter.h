@@ -12,8 +12,8 @@
 #include <zerom2m/compat/optional.h>
 #include <zerom2m/http/http_handler.h>
 #include <zerom2m/http/types.h>
-#include <zerom2m/onem2m/onem2m_service.h>
 #include <zerom2m/onem2m/binding.h>
+#include <zerom2m/onem2m/onem2m_service.h>
 #include <zerom2m/onem2m/types/resources.h>
 #include <zerom2m/serde/serde.h>
 
@@ -39,25 +39,31 @@ public:
     HttpResponse HandleRequest(const HttpRequest &req) override;
 
     bool SendNotification(const RequestPrimitive &request, CNetSubSystem *net) override;
-private:
-    HttpRequest       encodeRequest(const RequestPrimitive &prim,
-                                    const CString          &baseUrl    = "",
-                                    const CString          &acceptType = mime::JSON);
-    RequestPrimitive  decodeRequest(const HttpRequest &r);
-    void              decodeRequestHeaders(const HttpRequest &r, RequestPrimitive &prim);
-    ParsedContentType parseContentType(const CString &ct);
-    void              decodeQueryParams(const HttpRequest &r, RequestPrimitive &prim);
 
-    HttpResponse      encodeResponse(const ResponsePrimitive &rsp,
-                                     const CString           &contentType = mime::JSON);
+    HttpRequest      encodeRequest(const RequestPrimitive &prim,
+                                   const CString          &baseUrl    = "",
+                                   const CString          &acceptType = mime::JSON);
+    RequestPrimitive decodeRequest(const HttpRequest &r);
+
+    HttpResponse encodeResponse(const ResponsePrimitive &rsp,
+                                const CString           &contentType = mime::JSON);
+
     ResponsePrimitive decodeResponse(const HttpResponse &h, const CString &requestIdentifier = "");
+
+private:
+    void decodeRequestHeaders(const HttpRequest &r, RequestPrimitive &prim);
+
+    ParsedContentType parseContentType(const CString &ct);
+
+    void decodeQueryParams(const HttpRequest &r, RequestPrimitive &prim);
 
     FilterCriteria filterCriteriaFromQuery(const HttpRequest &r);
 
     RequestMethod operationToMethod(Operation op);
-    Operation     methodToOperation(RequestMethod m, boolean hasResourceType = false);
 
-    ResponseStatus     rscToHttpStatus(ResponseStatusCode rsc);
+    Operation methodToOperation(RequestMethod m, boolean hasResourceType = false);
+
+    ResponseStatus rscToHttpStatus(ResponseStatusCode rsc);
 };
 
 } // namespace zerom2m::onem2m::bindings::http

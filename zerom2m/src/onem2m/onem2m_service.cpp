@@ -138,7 +138,7 @@ Notification BuildNotification(const Subscription     &sub,
             break;
         }
         case NotificationContentType::ResourceID: {
-            // TODO: create lightweight representation
+            // XXX: create lightweight representation
             break;
         }
         case NotificationContentType::ModifiedAttributes: {
@@ -149,12 +149,8 @@ Notification BuildNotification(const Subscription     &sub,
             break;
     }
 
-    // FIXME: populate other attributes
-
     return sgn;
 }
-
-// TODO: Clean this ones below
 
 CString SliceCString(const char *start, size_t length)
 {
@@ -366,18 +362,20 @@ CString CanonicalizeAddressingPath(const CString &path,
     if (absolute) {
         // After SPID, remaining segments are: cseid/rn/... or cseid/ri
         // segments[0] should be cseid, segments[1] the cseName or "-" or a resource
+
         if (segments.GetCount() < 2) return CString(); // BAD_REQUEST: only cseid, no resource
         if (segments[0].Compare(cseIdName) != 0) return CString();
         start = 1; // skip the cseid segment
     } else if (networkPrefix) {
         // SP-relative: /~/cseid/...
+
         if (segments.GetCount() == 0) return CString();
         if (segments[0].Compare(cseIdName) != 0) return CString();
         if (segments.GetCount() == 1) return CString(); // BAD_REQUEST: only cseid
         // Unstructured shortcut: /~/cseid/ri (exactly 2 segments, second not cseName or "-")
         if (segments.GetCount() == 2 && segments[1].Compare(cseIdName) != 0 &&
             segments[1].Compare(cseName) != 0 && segments[1].Compare("-") != 0) {
-            CString out("/");
+            CString out; // return only the ri
             out.Append(segments[1].c_str());
             valid = true;
             return out;
@@ -514,6 +512,9 @@ void OneM2MService::Initialize(const SystemConfig &config,
     httpBinding_ = &httpBinding;
 
     if (config.system.clean_db_on_boot) {
+        CLogger::Get()->Write(
+            "onem2m_service", LogError, "Deleting existing database: clean_db_on_boot=true");
+
         if (!db_.DeleteDatabaseFile(DB_PATH)) {
             CLogger::Get()->Write(
                 "onem2m_service", LogError, "Failed to delete database file: %s", DB_PATH);
@@ -610,6 +611,8 @@ ResponsePrimitive OneM2MService::HandleRequest(const RequestPrimitive &request)
             return Update(request);
         case Operation::Delete:
             return Delete(request);
+        case Operation::Notify:
+            return Notify(request);
         default: {
             ResponsePrimitive r;
             r.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
@@ -626,15 +629,19 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
     CString lookupErr;
     bool    targetValid = false;
     bool    wrongSpid   = false;
-    db_.GetCSEBase(cse, lookupErr);
-    CString target =
-        lookupErr.GetLength() == 0
-            ? CanonicalizeAddressingPath(
-                  request.to, cse.resourceName, cse.cseID, spId_, targetValid, wrongSpid)
-            : CString();
-    if (!targetValid) {
+    if (!db_.GetCSEBase(cse, lookupErr)) {
         CLogger::Get()->Write(
             "onem2m_service", LogError, "CSEBase lookup failed: %s", lookupErr.c_str());
+        resp.responseStatusCode = ResponseStatusCode::INTERNAL_SERVER_ERROR;
+        return resp;
+    }
+    // CString target = request.to;
+    CString target = CanonicalizeAddressingPath(
+        request.to, cse.resourceName, cse.cseID, spId_, targetValid, wrongSpid);
+
+    if (!targetValid) {
+        CLogger::Get()->Write(
+            "onem2m_service", LogError, "Invalid target: %s", lookupErr.c_str());
         resp.responseStatusCode =
             wrongSpid ? ResponseStatusCode::NOT_FOUND : ResponseStatusCode::BAD_REQUEST;
         return resp;
@@ -672,6 +679,11 @@ ResponsePrimitive OneM2MService::Create(const RequestPrimitive &request)
     // Get the response content as for notification processing
     pc = resp.content;
     // Notify creation subscriptions
+    CLogger::Get()->Write("onem2m_service",
+                          LogNotice,
+                          "Checking subscriptions for CREATE of kind '%u' at target '%s'",
+                          pc.kind(),
+                          target.c_str());
     if (!pc.GetIf<Subscription>()) {
         SendNotification(pc, NotificationEventType::CreateOfDirectChildResource, request.from);
     }
@@ -686,6 +698,10 @@ OneM2MService::CreateAE(const AE &ae, const RequestPrimitive &req, const CString
 
     PrimitiveContent parent;
     CString          lookupErr;
+    CLogger::Get()->Write("onem2m_service",
+                          LogNotice,
+                          "Looking up parent for CREATE AE at target: '%s'",
+                          target.c_str());
     if (!db_.LoadPrimitiveContentByTarget(target, parent, lookupErr)) {
         CLogger::Get()->Write(
             "onem2m_service", LogError, "Parent resource lookup failed: %s", lookupErr.c_str());
@@ -696,13 +712,13 @@ OneM2MService::CreateAE(const AE &ae, const RequestPrimitive &req, const CString
     const CSEBase *cse = parent.GetIf<CSEBase>();
     if (!cse) {
         CLogger::Get()->Write(
-            "onem2m_service", LogError, "Parent resource is not CSEBase as expected");
+            "onem2m_service", LogError, "Parent resource is not CSEBase");
         ResponsePrimitive resp;
         resp.responseStatusCode = ResponseStatusCode::INVALID_CHILD_RESOURCE_TYPE;
         ;
         return resp;
     }
-    r.parentID = cse->cseID;
+    r.parentID = cse->resourceID;
 
     // Reject 'creator' attribute
     if (req.vendorInformation.has_value() && req.vendorInformation->Compare("has_creator") == 0) {
@@ -719,7 +735,8 @@ OneM2MService::CreateAE(const AE &ae, const RequestPrimitive &req, const CString
 
     // Reject if appID does not start with 'R' or 'N'
     char prefix = r.appID.c_str()[0];
-    if (req.releaseVersionIndicator.has_value() && req.releaseVersionIndicator->Compare("4") == 0) {
+    if (!req.releaseVersionIndicator.has_value() ||
+        req.releaseVersionIndicator->Compare("4") == 0) {
         // For Release 4, appID must start with 'R'
         if (prefix != 'R' && prefix != 'N') {
             ResponsePrimitive bad;
@@ -758,7 +775,7 @@ OneM2MService::CreateAE(const AE &ae, const RequestPrimitive &req, const CString
     if (req.from.GetLength() != 0 && req.from.Compare(cseid) == 0) {
         CLogger::Get()->Write("onem2m_service",
                               LogNotice,
-                              "from: '%s', cseid: '%s'",
+                              "Security association required for from: '%s', cseid: '%s'",
                               req.from.c_str(),
                               cseid.c_str());
         ResponsePrimitive respSec;
@@ -808,15 +825,6 @@ OneM2MService::CreateAE(const AE &ae, const RequestPrimitive &req, const CString
         r.requestReachability = true;
     else r.requestReachability = false;
 
-    // FIXME: clean up
-    CString poa;
-    for (unsigned i = 0; i < r.pointOfAccess.GetCount(); ++i) {
-        if (i > 0) poa.Append(",");
-        poa.Append(r.pointOfAccess[i].c_str());
-    }
-
-    CLogger::Get()->Write("onem2m_service", LogNotice, "AE poa: '%s'", poa.c_str());
-
     CString saveErr;
     if (!db_.SaveAE(r, saveErr)) {
         CLogger::Get()->Write(
@@ -847,6 +855,10 @@ ResponsePrimitive OneM2MService::CreateContainer(const Container        &con,
     PrimitiveContent parent;
     CString          lookupErr;
 
+    CLogger::Get()->Write("onem2m_service",
+                          LogNotice,
+                          "Looking up parent for CREATE Container at target: '%s'",
+                          target.c_str());
     if (!db_.LoadPrimitiveContentByTarget(target, parent, lookupErr)) {
         CLogger::Get()->Write(
             "onem2m_service", LogError, "Parent resource lookup failed: %s", lookupErr.c_str());
@@ -942,6 +954,10 @@ ResponsePrimitive OneM2MService::CreateContentInstance(const ContentInstance  &c
     PrimitiveContent parent;
     CString          lookupErr;
 
+    CLogger::Get()->Write("onem2m_service",
+                          LogNotice,
+                          "Looking up parent for CREATE ContentInstance at target: '%s'",
+                          target.c_str());
     if (!db_.LoadPrimitiveContentByTarget(target, parent, lookupErr)) {
         CLogger::Get()->Write(
             "onem2m_service", LogError, "Parent resource lookup failed: %s", lookupErr.c_str());
@@ -1119,6 +1135,10 @@ ResponsePrimitive OneM2MService::CreateSubscription(const Subscription     &sub,
     Subscription     r = sub;
     PrimitiveContent parent;
     CString          lookupErr;
+    CLogger::Get()->Write("onem2m_service",
+                          LogNotice,
+                          "Looking up parent for CREATE Subscription at target: '%s'",
+                          target.c_str());
     if (!db_.LoadPrimitiveContentByTarget(target, parent, lookupErr)) {
         CLogger::Get()->Write(
             "onem2m_service", LogError, "Parent resource lookup failed: %s", lookupErr.c_str());
@@ -1346,6 +1366,10 @@ ResponsePrimitive OneM2MService::CreateSubscription(const Subscription     &sub,
     CString subPath;
     CString err;
     if (!db_.GetPathByRI(r.parentID, subPath, err)) {
+        CLogger::Get()->Write("onem2m_service",
+                              LogError,
+                              "Failed to get path for subscription verification: %s",
+                              err.c_str());
         ResponsePrimitive bad;
         bad.responseStatusCode = ResponseStatusCode::NOT_FOUND;
         return bad;
@@ -1497,6 +1521,14 @@ OneM2MService::RetrieveCSE(const RequestPrimitive &req, const CSEBase &cse, cons
         resp.responseStatusCode = ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
         return resp;
     }
+
+    CLogger::Get()->Write("onem2m_service",
+                          LogNotice,
+                          "Retrieving CSE: rn='%s' ri='%s' pi='%s'",
+                          cse.resourceName.c_str(),
+                          cse.resourceID.c_str(),
+                          cse.parentID.c_str());
+
     PrimitiveContent out;
     out = cse;
     return makeResponse(req, ResponseStatusCode::OK, out);
@@ -1516,6 +1548,13 @@ OneM2MService::RetrieveAE(const RequestPrimitive &req, const AE &ae, const CStri
         resp.responseStatusCode = ResponseStatusCode::ORIGINATOR_HAS_NO_PRIVILEGE;
         return resp;
     }
+
+    CLogger::Get()->Write("onem2m_service",
+                          LogNotice,
+                          "Retrieving AE: rn='%s' ri='%s' pi='%s'",
+                          ae.resourceName.c_str(),
+                          ae.resourceID.c_str(),
+                          ae.parentID.c_str());
 
     PrimitiveContent out;
     out = ae;
@@ -1555,7 +1594,6 @@ ResponsePrimitive OneM2MService::RetrieveContainer(const RequestPrimitive &req,
     CString olPath = fullPath;
     olPath += "/ol";
 
-    // FIXME: check if this should be here
     if (cnt.disableRetrieval.has_value() && *cnt.disableRetrieval) {
         resp.responseStatusCode = ResponseStatusCode::OPERATION_NOT_ALLOWED;
         return resp;
@@ -1619,6 +1657,13 @@ ResponsePrimitive OneM2MService::RetrieveContainer(const RequestPrimitive &req,
         r.currentNrOfInstances = cinRIs.GetCount();
     }
 
+    CLogger::Get()->Write("onem2m_service",
+                          LogNotice,
+                          "Retrieving Container: rn='%s' ri='%s' pi='%s'",
+                          r.resourceName.c_str(),
+                          r.resourceID.c_str(),
+                          r.parentID.c_str());
+
     PrimitiveContent out;
     out = r;
     return makeResponse(req, ResponseStatusCode::OK, out);
@@ -1677,6 +1722,13 @@ ResponsePrimitive OneM2MService::RetrieveContentInstance(const RequestPrimitive 
         return resp;
     }
 
+    CLogger::Get()->Write("onem2m_service",
+                          LogNotice,
+                          "Retrieving ContentInstance: rn='%s' ri='%s' pi='%s'",
+                          cin.resourceName.c_str(),
+                          cin.resourceID.c_str(),
+                          cin.parentID.c_str());
+
     PrimitiveContent out;
     out = cin;
     return makeResponse(req, ResponseStatusCode::OK, out);
@@ -1697,9 +1749,12 @@ ResponsePrimitive OneM2MService::RetrieveSubscription(const RequestPrimitive &re
     }
 
     CLogger::Get()->Write("onem2m_service",
-                          LogDebug,
-                          "RetrieveSubscription: creator='%s'",
-                          sub.creator.value().c_str());
+                          LogNotice,
+                          "Retrieving Subscription: rn='%s' ri='%s' pi='%s'",
+                          sub.resourceName.c_str(),
+                          sub.resourceID.c_str(),
+                          sub.parentID.c_str());
+
 
     PrimitiveContent out;
     out = sub;
@@ -1719,11 +1774,21 @@ void OneM2MService::SendNotification(const PrimitiveContent     &changed,
 
     if (!db_.LoadPrimitiveContentChildren(
             base->parentID, ResourceType::Subscription, subRiList, err)) {
+        CLogger::Get()->Write("onem2m_service",
+                              LogError,
+                              "Failed to load subscriptions for resource '%s': %s",
+                              base->resourceID.c_str(),
+                              err.c_str());
         return;
     }
 
     for (const auto &subRi : subRiList) {
         PrimitiveContent pc;
+        CLogger::Get()->Write("onem2m_service",
+                              LogDebug,
+                              "Processing subscription '%s' for event type %d",
+                              subRi.c_str(),
+                              static_cast<int>(eventType));
 
         if (!db_.LoadPrimitiveContentByTarget(subRi, pc, err)) {
             CLogger::Get()->Write("onem2m_service",
@@ -1803,11 +1868,43 @@ bool OneM2MService::SendSubscriptionVerification(const Subscription &sub,
     return false;
 }
 
-ResponsePrimitive OneM2MService::Notify(const RequestPrimitive &request)
+void OneM2MService::SetOnNotificationHandler(INotificationHandler *handler)
+{ notificationHandler_ = handler; }
+
+ResponsePrimitive OneM2MService::Notify(const RequestPrimitive &req)
 {
-    // TODO: Call External notification handler, Do when we have p2p layer done
-    ResponsePrimitive resp;
-    resp.responseStatusCode = ResponseStatusCode::NOT_IMPLEMENTED;
+    Notification sgn;
+
+    CLogger::Get()->Write("onem2m_service",
+                          LogDebug,
+                          "Notify: notification from '%u'",
+                          req.from.GetLength() > 0 ? req.from.c_str() : "<empty>");
+
+    if (auto *sgnPtr = req.content.GetIf<Notification>()) sgn = *sgnPtr;
+    else {
+        ResponsePrimitive resp;
+        resp.responseStatusCode = ResponseStatusCode::BAD_REQUEST;
+        return resp;
+    }
+
+    // Call notification handler
+    ResponsePrimitive resp = notificationHandler_->OnNotification(sgn);
+
+    // Free representation will not be used anymore
+    if (sgn.notificationEvent.has_value() && sgn.notificationEvent.value().representation) {
+        delete sgn.notificationEvent.value().representation;
+        sgn.notificationEvent.value().representation = nullptr;
+    }
+
+    // Populate response primitive fields that are required for the response but not set by the
+    // handler
+    resp.to                = req.from;
+    resp.requestIdentifier = req.requestIdentifier;
+
+    CLogger::Get()->Write("onem2m_service",
+                          LogDebug,
+                          "Notify: responding to notification with '%u'",
+                          resp.responseStatusCode);
     return resp;
 }
 
@@ -1885,12 +1982,6 @@ void OneM2MService::DeliverTarget(const CString      &nu,
 
     for (const auto &poa : poas) {
         req.to = poa;
-        CLogger::Get()->Write("onem2m_service",
-                              LogDebug,
-                              "DeliverTarget: sending notification to POA '%s' for nu='%s'",
-                              poa.c_str(),
-                              nu.c_str());
-
         if (req.to.GetLength() > 7 && strncmp(req.to.c_str(), "http://", 7) == 0) {
             // HTTP binding
             httpBinding_->SendNotification(req, net_);

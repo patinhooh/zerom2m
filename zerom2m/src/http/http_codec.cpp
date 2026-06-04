@@ -48,19 +48,6 @@ RequestMethod ParseMethodToken(const char *token)
     return RequestMethod::RequestMethodUnknown;
 }
 
-bool HeaderNameEquals(const CString &name, const char *literal)
-{
-    if (literal == nullptr) { return false; }
-
-    return name.Compare(literal) == 0;
-}
-
-bool IsReservedRequestHeader(const CString &name)
-{
-    return HeaderNameEquals(name, "Host") || HeaderNameEquals(name, "Connection") ||
-           HeaderNameEquals(name, "User-Agent") || HeaderNameEquals(name, "Content-Length");
-}
-
 CString BuildTarget(const HttpRequest &request)
 {
     CString target;
@@ -83,7 +70,6 @@ CString BuildTarget(const HttpRequest &request)
         target += '?';
         target += request.Query;
     }
-
     return target;
 }
 
@@ -609,22 +595,22 @@ bool HttpCodec::ParseResponse(const u8 *data, size_t length, HttpResponse &respo
     if (bodyStart > length) { return false; }
 
     size_t bodyLength = length - bodyStart;
+
     if (hasContentLength) {
-        if (contentLength > bodyLength) { return false; }
+        if (contentLength > bodyLength) {
+            return false; // truncated response
+        }
+
         bodyLength = contentLength;
     }
 
     if (bodyLength > MAX_CONTENT_SIZE) { return false; }
 
     if (bodyLength > 0) {
-        size_t bodyLen = length - bodyLength;
-
-        if (bodyLen > MAX_CONTENT_SIZE) { bodyLen = MAX_CONTENT_SIZE; }
-
         char bodyStorage[MAX_CONTENT_SIZE + 1]{};
 
-        memcpy(bodyStorage, &buffer[bodyStart], bodyLen);
-        bodyStorage[bodyLen] = '\0';
+        memcpy(bodyStorage, &buffer[bodyStart], bodyLength);
+        bodyStorage[bodyLength] = '\0';
 
         response.Body = bodyStorage;
     } else {

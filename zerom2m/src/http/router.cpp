@@ -80,6 +80,11 @@ HttpResponse Router::HandleRequest(const HttpRequest &request)
     }
 
     // Not found
+    CLogger::Get()->Write(FromRouter,
+                          LogWarning,
+                          "No handler found for %u %s",
+                          request.Method,
+                          request.Path.c_str());
     HttpResponse resp;
     resp.Status = ResponseStatus::NotFound;
     return resp;
