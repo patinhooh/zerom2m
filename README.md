@@ -21,6 +21,7 @@ Supports the following core oneM2M resources:
 - CNT (Container)
 - CIN (Content Instance)
 - SUB (Subscription)
+- SGN (Notification)
 
 ## Hardware
 
