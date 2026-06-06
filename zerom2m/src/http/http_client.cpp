@@ -53,17 +53,22 @@ bool HttpClient::Get(const char *path, HttpResponse &response)
     return Request(request, response);
 }
 
-bool HttpClient::Post(const char *path, const CString &body, size_t bodyLength, HttpResponse &response)
+bool HttpClient::Post(const char *path, const CString &body, HttpResponse &response)
 {
     HttpRequest request;
-    request.Method     = RequestMethod::POST;
-    request.Path       = path;
-    request.Body       = body;
+    request.Method = RequestMethod::POST;
+    request.Path   = path;
+    request.Body   = body;
     return Request(request, response);
 }
 
 bool HttpClient::Request(const HttpRequest &request, HttpResponse &response)
 {
+    CLogger::Get()->Write(FromHttpClient,
+                          LogDebug,
+                          "Making HTTP request to '%s'",
+                          request.Path.c_str());
+
     response = HttpResponse();
 
     if (netSubSystem_ == nullptr) {
@@ -77,14 +82,31 @@ bool HttpClient::Request(const HttpRequest &request, HttpResponse &response)
     }
 
     CString host = serverName_;
-    if (host.GetLength() == 0) { serverIP_.Format(&host); }
+    if (host.GetLength() == 0) {
+        serverIP_.Format(&host);
+    }
 
     CString header;
     CString userAgent = SERVER_NAME;
-    HttpCodec::SerializeRequest(request, header, host, userAgent);
 
+    HttpCodec::SerializeRequest(request, header, host, userAgent);
     CSocket *socket = new CSocket(netSubSystem_, IPPROTO_TCP);
     if (socket == nullptr) {
+        response.Status = ResponseStatus::ServiceUnavailable;
+        return false;
+    }
+
+    CLogger::Get()->Write(FromHttpClient,
+                          LogDebug,
+                          "Connecting to server %u.%u.%u.%u:%u",
+                          serverIP_.Get()[0],
+                          serverIP_.Get()[1],
+                          serverIP_.Get()[2],
+                          serverIP_.Get()[3],
+                          serverPort_);
+
+    if (socket->Connect(serverIP_, serverPort_) < 0) {
+        delete socket;
         response.Status = ResponseStatus::ServiceUnavailable;
         return false;
     }
@@ -94,23 +116,24 @@ bool HttpClient::Request(const HttpRequest &request, HttpResponse &response)
         socket->SetOptionSendTimeout(timeoutSeconds_ * 1000000);
     }
 
-    if (socket->Connect(serverIP_, serverPort_) < 0) {
-        delete socket;
-        response.Status = ResponseStatus::ServiceUnavailable;
-        return false;
-    }
-
-    if (socket->Send((const char *)header, header.GetLength(), 0) < 0) {
-        delete socket;
-        response.Status = ResponseStatus::BadGateway;
-        return false;
-    }
-
-    if (request.Body.GetLength() > 0 &&
-        socket->Send((const char *)request.Body, request.Body.GetLength(), 0) < 0) {
-        delete socket;
-        response.Status = ResponseStatus::BadGateway;
-        return false;
+    // Combine header + body into a single Send() so the server always
+    // receives the full request in one packet. On bare-metal TCP stacks
+    // two separate Send() calls produce two separate segments, and the
+    // server's single Receive() may only catch the first one.
+    if (request.Body.GetLength() > 0) {
+        CString combined = header;
+        combined.Append(request.Body);
+        if (socket->Send((const char *)combined, combined.GetLength(), 0) < 0) {
+            delete socket;
+            response.Status = ResponseStatus::BadGateway;
+            return false;
+        }
+    } else {
+        if (socket->Send((const char *)header, header.GetLength(), 0) < 0) {
+            delete socket;
+            response.Status = ResponseStatus::BadGateway;
+            return false;
+        }
     }
 
     const size_t receiveCapacity = MAX_CONTENT_SIZE + 4096;
@@ -121,8 +144,6 @@ bool HttpClient::Request(const HttpRequest &request, HttpResponse &response)
         return false;
     }
 
-    // Zero the buffer to ensure any string operations are safe even when
-    // the peer closes the connection mid-read or recv returns an error.
     memset(buffer, 0, receiveCapacity);
 
     size_t totalReceived = 0;
@@ -130,22 +151,14 @@ bool HttpClient::Request(const HttpRequest &request, HttpResponse &response)
         int n = socket->Receive(reinterpret_cast<char *>(buffer + totalReceived),
                                 static_cast<unsigned>(receiveCapacity - totalReceived),
                                 0);
+
         if (n < 0) {
-            CLogger::Get()->Write(FromHttpClient, LogWarning, "Request: Receive failed (n<0)");
             if (totalReceived == 0) {
                 delete[] buffer;
                 delete socket;
                 response.Status = ResponseStatus::GatewayTimeout;
                 return false;
             }
-
-            // If we've already received some bytes, stop receiving and try
-            // to parse whatever we have. This tolerates transient recv
-            // errors (e.g., non-blocking EAGAIN) that occur after the peer
-            // has sent data and closed the connection.
-            // Ensure the buffer is null-terminated at the actual received
-            // length so subsequent parsing that relies on C string
-            // functions does not read beyond the valid region.
             if (totalReceived < receiveCapacity) {
                 buffer[totalReceived] = 0;
             } else {
@@ -166,7 +179,7 @@ bool HttpClient::Request(const HttpRequest &request, HttpResponse &response)
 
     if (!ok) {
         response.Status = ResponseStatus::BadGateway;
-        response.Body = "";
+        response.Body   = "";
         return false;
     }
 
@@ -196,31 +209,35 @@ bool HttpClient::RequestHeadersOnly(const HttpRequest &request, HttpResponse &re
         return false;
     }
 
-    if (timeoutSeconds_ > 0) {
-        socket->SetOptionReceiveTimeout(timeoutSeconds_ * 1000000);
-        socket->SetOptionSendTimeout(timeoutSeconds_ * 1000000);
-    }
-
     if (socket->Connect(serverIP_, serverPort_) < 0) {
         delete socket;
         response.Status = ResponseStatus::ServiceUnavailable;
         return false;
     }
 
-    if (socket->Send((const char *)header, header.GetLength(), 0) < 0) {
-        delete socket;
-        response.Status = ResponseStatus::BadGateway;
-        return false;
+    if (timeoutSeconds_ > 0) {
+        socket->SetOptionReceiveTimeout(timeoutSeconds_ * 1000000);
+        socket->SetOptionSendTimeout(timeoutSeconds_ * 1000000);
     }
 
-    if (request.Body.GetLength() > 0 &&
-        socket->Send((const char *)request.Body, request.Body.GetLength(), 0) < 0) {
-        delete socket;
-        response.Status = ResponseStatus::BadGateway;
-        return false;
+    // Same combined send as Request()
+    if (request.Body.GetLength() > 0) {
+        CString combined = header;
+        combined.Append(request.Body);
+        if (socket->Send((const char *)combined, combined.GetLength(), 0) < 0) {
+            delete socket;
+            response.Status = ResponseStatus::BadGateway;
+            return false;
+        }
+    } else {
+        if (socket->Send((const char *)header, header.GetLength(), 0) < 0) {
+            delete socket;
+            response.Status = ResponseStatus::BadGateway;
+            return false;
+        }
     }
 
-    const size_t receiveCapacity = 4096; // headers should fit in small buffer
+    const size_t receiveCapacity = 4096;
     u8          *buffer          = new u8[receiveCapacity];
     if (buffer == nullptr) {
         delete socket;
@@ -235,7 +252,6 @@ bool HttpClient::RequestHeadersOnly(const HttpRequest &request, HttpResponse &re
                                 static_cast<unsigned>(receiveCapacity - totalReceived),
                                 0);
         if (n < 0) {
-            CLogger::Get()->Write(FromHttpClient, LogWarning, "RequestHeadersOnly: Receive failed (n<0)");
             if (totalReceived == 0) {
                 delete[] buffer;
                 delete socket;
@@ -247,12 +263,11 @@ bool HttpClient::RequestHeadersOnly(const HttpRequest &request, HttpResponse &re
         if (n == 0) break;
         totalReceived += static_cast<size_t>(n);
 
-        // scan for header terminator
         for (size_t i = 0; i + 3 < totalReceived; ++i) {
             if (buffer[i] == '\r' && buffer[i + 1] == '\n' && buffer[i + 2] == '\r' &&
                 buffer[i + 3] == '\n') {
                 foundHeaderEnd = true;
-                totalReceived  = i + 4; // limit to header bytes only
+                totalReceived  = i + 4;
                 break;
             }
         }
@@ -261,11 +276,9 @@ bool HttpClient::RequestHeadersOnly(const HttpRequest &request, HttpResponse &re
 
     delete socket;
 
-    // Null-terminate a copy for safe parsing
     if (totalReceived >= receiveCapacity) totalReceived = receiveCapacity - 1;
     buffer[totalReceived] = '\0';
 
-    // Parse status line: "HTTP/1.x <status> ..."
     char *buf     = reinterpret_cast<char *>(buffer);
     char *lineEnd = strstr(buf, "\r\n");
     if (!lineEnd) lineEnd = strchr(buf, '\n');

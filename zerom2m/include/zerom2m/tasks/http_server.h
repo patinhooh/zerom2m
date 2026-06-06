@@ -43,18 +43,13 @@ public:
      */
     HttpServer(CNetSubSystem      *net,
                HttpAdapter        *httpBinding,
-               CActLED            *led,
                const SystemConfig *config,
                CSocket            *socket = nullptr);
 
     ~HttpServer(void);
 
 private:
-    CActLED            *led_;
     const SystemConfig *config_{nullptr};
-    Router              router_;
-    // TODO: Move this index info into an AE from the node it self resource and serve it from there
-    handlers::IndexHandler indexHandler_;
     HttpAdapter           *httpAdapter_;
 };
 

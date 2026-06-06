@@ -12,6 +12,7 @@
 #include <zerom2m/compat/vector.h>
 #include <zerom2m/config/system_config.h>
 #include <zerom2m/onem2m/binding.h>
+#include <zerom2m/onem2m/notification_handler.h>
 #include <zerom2m/onem2m/types/primitives.h>
 #include <zerom2m/onem2m/types/resources.h>
 #include <zerom2m/sqlite/database.h>
@@ -81,12 +82,17 @@ public:
     ResponsePrimitive Update(const RequestPrimitive &request);
     ResponsePrimitive Delete(const RequestPrimitive &request);
 
+    void SetOnNotificationHandler(INotificationHandler *handler);
+
+    bool IsInitialized() const { return initialized_; }
+
 private:
     OneM2MService()  = default;
     ~OneM2MService() = default;
 
-    CNetSubSystem *net_{nullptr};
-    IBinding      *httpBinding_{nullptr};
+    CNetSubSystem        *net_{nullptr};
+    IBinding             *httpBinding_{nullptr};
+    INotificationHandler *notificationHandler_{nullptr};
 
     boolean initialized_    = false;
     u64     nextResourceId_ = 1;

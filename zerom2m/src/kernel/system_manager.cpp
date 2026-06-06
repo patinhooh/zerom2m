@@ -9,14 +9,16 @@
  */
 #include "system_manager.h"
 
+#include <circle/logger.h>
 #include <zerom2m/compat/shutdown_mode.h>
 #include <zerom2m/kernel/kernel.h>
 #include <zerom2m/kernel/network_manager.h>
 #include <zerom2m/onem2m/onem2m_service.h>
-#include <zerom2m/tasks/blink_task.h>
 #include <zerom2m/tasks/http_server.h>
-
-#include <circle/logger.h>
+#include <zerom2m/tasks/light_example.h>
+#include <zerom2m/tasks/switch_example.h>
+#include <zerom2m/tasks/idle_task.h>
+#include <zerom2m/tasks/stats_task.h>
 
 namespace zerom2m::kernel
 {
@@ -52,9 +54,19 @@ ShutdownMode SystemManager::Run()
 
     networkManager_.DumpStatus();
 
+    if (config_.system.log_stats) {
+        CLogger::Get()->Write(FromSystemManager, LogNotice, "System stats logging enabled");
+
+        // Start system monitoring tasks.
+        SystemStats stats_;
+        auto* idleTask = new IdleMonitorTask(stats_);
+        auto* statsTask = new StatsTask(scheduler_, stats_);
+    }
+
     StartServices();
 
     CLogger::Get()->Write(FromSystemManager, LogNotice, "All services started");
+
 
     while (shutdownRequest_ == ShutdownMode::None) {
         scheduler_.MsSleep(100);
@@ -94,8 +106,21 @@ void SystemManager::StartServices()
     onem2m::OneM2MService::Get().Initialize(
         config_, networkManager_.GetNetSubSystem(), *httpBinding);
 
-    new tasks::BlinkTask(&scheduler_, &led_, 1000);
-    new tasks::HttpServer(&networkManager_.GetNetSubSystem(), httpBinding, &led_, &config_);
+    new tasks::HttpServer(&networkManager_.GetNetSubSystem(), httpBinding, &config_);
+
+    // Add new tasks here:
+    if (config_.system.p2p_task == 0) {
+        auto *lightExample =
+            new tasks::LightExample(&scheduler_, &networkManager_, httpBinding, &config_, &led_);
+        onem2m::OneM2MService::Get().SetOnNotificationHandler(lightExample);
+
+    } else if (config_.system.p2p_task == 1) {
+        auto *switchExample =
+            new tasks::SwitchExample(&scheduler_, &networkManager_, httpBinding, &config_);
+        onem2m::OneM2MService::Get().SetOnNotificationHandler(switchExample);
+    } else {
+        //...
+    }
 }
 
 } // namespace zerom2m::kernel

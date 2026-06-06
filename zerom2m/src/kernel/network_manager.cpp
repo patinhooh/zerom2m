@@ -162,6 +162,21 @@ void NetworkManager::DumpStatus()
     if (wlan_.IsLinkUp()) wlan_.DumpStatus();
 }
 
-CNetSubSystem &NetworkManager::GetNetSubSystem() { return *net_; }
+CString NetworkManager::GetIP()
+{
+    CString           url;
+    const CIPAddress *ip = net_->GetConfig()->GetIPAddress();
+
+    if (ip) url.Format("%u.%u.%u.%u", ip->Get()[0], ip->Get()[1], ip->Get()[2], ip->Get()[3]);
+    else url = "";
+
+    return url;
+}
+
+CNetSubSystem &NetworkManager::GetNetSubSystem()
+{
+    assert(net_ != nullptr);
+    return *net_;
+}
 
 } // namespace zerom2m::kernel

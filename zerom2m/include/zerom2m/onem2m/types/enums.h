@@ -384,7 +384,6 @@ enum class NotificationEventType : u8 {
 enum class MemberType : u32 {
     Mixed = 0, // heterogeneous
     // Values correspond to ResourceType values
-    // TODO: CHECK THIS
 };
 
 // ConsistencyStrategy (csy)

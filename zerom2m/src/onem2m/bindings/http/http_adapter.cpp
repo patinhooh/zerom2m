@@ -126,7 +126,14 @@ bool ParseNotificationUrl(const CString &url, CIPAddress &ip, u16 &port, CString
 HttpResponse HttpAdapter::HandleRequest(const HttpRequest &req)
 {
     CString path = req.Path;
-
+    CLogger::Get()->Write("http_adapter",
+                          LogNotice,
+                          "Received request:\nmethod=%d path=%s query=%s headers=%u bodyLength=%u",
+                          (int)req.Method,
+                          req.Path.c_str(),
+                          req.Query.c_str(),
+                          req.HeaderCount(),
+                          req.Body.GetLength());
     RequestPrimitive prim = decodeRequest(req);
 
     CString errMsg;
@@ -159,24 +166,21 @@ bool HttpAdapter::SendNotification(const RequestPrimitive &request, CNetSubSyste
     u16        port = 0;
     CString    path;
     ParseNotificationUrl(request.to, ip, port, path);
-    // CLogger::Get()->Write("http_adapter",
-    //                       LogNotice,
-    //                       "Sending notification to %u.%u.%u.%u:%u%s",
-    //                       ip.Get()[0],
-    //                       ip.Get()[1],
-    //                       ip.Get()[2],
-    //                       ip.Get()[3],
-    //                       port,
-    //                       path.c_str());
-
     const HttpRequest req = encodeRequest(request);
-    // CLogger::Get()->Write(
-    //     "http_adapter", LogNotice, "Sending notification:\n %s", req.Body.c_str());
+
+    CLogger::Get()->Write(
+        "http_adapter",
+        LogNotice,
+        "Sending notification request:\nmethod=%d path=%s query=%s headers=%u bodyLength=%u",
+        (int)req.Method,
+        req.Path.c_str(),
+        req.Query.c_str(),
+        req.HeaderCount(),
+        req.Body.GetLength());
 
     if (net == nullptr) return false;
     auto client = HttpClient(net, ip, port, SERVER_NAME, 2);
 
-    // XXX: Fire and forget for now, but we should handle failures and retries
     HttpResponse resp;
     client.Request(req, resp);
     if (resp.Status != ResponseStatus::OK && resp.Status != ResponseStatus::Created) {
@@ -334,6 +338,7 @@ RequestPrimitive HttpAdapter::decodeRequest(const HttpRequest &r)
                                fc.modifiedSince.has_value() || fc.contentFilterQuery.has_value();
         if (hasFc) prim.filterCriteria = fc;
     }
+
 
     // ---- Body -> PrimitiveContent --------------------------------------------
     if (r.Body.GetLength() > 0) {

@@ -87,6 +87,11 @@ public:
     void DumpStatus();
 
     /**
+     * @brief Gets the IP for this device.
+     */
+    CString GetIP();
+
+    /**
      * @brief Returns the underlying network subsystem.
      *
      * Used by SystemManager to pass to services that need it (e.g. HttpServer).

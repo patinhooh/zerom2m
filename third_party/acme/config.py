@@ -12,7 +12,6 @@ import socket
 from rich import print
 
 BINDING						= 'http'		# possible values: http, https, mqtt, ws, coap
-# TARGETHOST					= '192.168.242.96'	# Hostname of the CSE	
 TARGETHOST					= 'localhost'	# Hostname of the CSE	
 
 match BINDING:
@@ -84,12 +83,11 @@ TARGETHOSTIP 			= socket.gethostbyname(TARGETHOST)
 CSEHOST 				= TARGETHOSTIP		# CSE Server address.
 
 CSEPORT					= 8080				# CSE Server port.
-# CSEPORT					= 80				# CSE Server port.
 HTTPROOT				= '/'				# Root of the HTTP path. Needs a leading and trailing slash (or a single slash)
 CSEURL					= f'{PROTOCOL}://{CSEHOST}:{CSEPORT}{HTTPROOT}'	# CSE Server address.
-CSERN					= 'm2m'			# CSEBase Resource Name
-CSERI					= 'm2m'			# CSEBase Resource ID
-CSEID					= '/m2m'			# CSE-ID
+CSERN					= 'zerom2m'			# CSEBase Resource Name
+CSERI					= 'zerom2m'			# CSEBase Resource ID
+CSEID					= '/zerom2m'			# CSE-ID
 
 
 ##############################################################################

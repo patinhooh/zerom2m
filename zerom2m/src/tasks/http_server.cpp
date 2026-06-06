@@ -29,38 +29,20 @@ const char FromHttpServer[] = "http_server";
 
 HttpServer::HttpServer(CNetSubSystem      *net,
                        HttpAdapter        *httpBinding,
-                       CActLED            *led,
                        const SystemConfig *config,
                        CSocket            *socket)
     : HttpDaemon(net,
-                 &router_,
+                 httpBinding,
                  socket,
                  config->http.max_content_size,
                  config->http.port,
                  config->http.timeout_seconds,
                  config->http.max_clients)
-    , led_(led)
     , config_(config)
-    , router_()
-    , indexHandler_(config)
     , httpAdapter_(httpBinding)
 {
-    // Register handlers for different routes.
-    router_.Register(http::RequestMethod::GET, "/*", httpAdapter_);
-    router_.Register(http::RequestMethod::POST, "/*", httpAdapter_);
-    // XXX: Added PUT and DELETE for completeness, even though they are not currently supported by
-    // the service.
-    router_.Register(http::RequestMethod::PUT, "/*", httpAdapter_);
-    router_.Register(http::RequestMethod::DELETE, "/*", httpAdapter_);
-    // TODO: Move this index info into an AE from the node it self resource and serve it from
-    // there
-    router_.Register(http::RequestMethod::GET, "/", &indexHandler_);
 }
 
-HttpServer::~HttpServer()
-{
-    led_    = nullptr;
-    config_ = nullptr;
-}
+HttpServer::~HttpServer() { config_ = nullptr; }
 
 } // namespace zerom2m::tasks

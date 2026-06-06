@@ -188,14 +188,17 @@ void HttpDaemon::Worker(void)
     socket_->SetOptionReceiveTimeout(timeoutSeconds_ * 1000000);
 
     unsigned bufSize = maxContentSize_ > 0 ? maxContentSize_ : MAX_CONTENT_SIZE;
-    u8      *pBuf    = new u8[bufSize];
+
+    u8 *pBuf = new u8[bufSize];
     if (pBuf == nullptr) {
         delete socket_;
         socket_ = nullptr;
         return;
     }
+    memset(pBuf, 0, bufSize);
 
     int nRecv = socket_->Receive((char *)pBuf, bufSize, 0);
+    CLogger::Get()->Write(FromHttpDaemon, LogDebug, "Received %d bytes", nRecv);
     if (nRecv <= 0) {
         CLogger::Get()->Write(FromHttpDaemon, LogWarning, "Receive failed");
         delete[] pBuf;
@@ -255,6 +258,83 @@ void HttpDaemon::Worker(void)
         }
     }
 
+    if (!foundEnd) {
+        CLogger::Get()->Write(FromHttpDaemon, LogWarning, "Never received complete header");
+        HttpResponse resp;
+        resp.Status = ResponseStatus::BadRequest;
+        resp.Body   = "";
+        CString header;
+        HttpCodec::SerializeResponse(resp, header);
+        socket_->Send(header.c_str(), header.GetLength(), MSG_DONTWAIT);
+        delete[] pBuf;
+        delete socket_;
+        socket_ = nullptr;
+        return;
+    }
+
+    // Phase 2: parse Content-Length and read body if needed
+    {
+        if (headerEnd > totalRecv) {
+            delete[] pBuf;
+            delete socket_;
+            socket_ = nullptr;
+            return;
+        }
+
+        u8 saved        = pBuf[headerEnd];
+        pBuf[headerEnd] = '\0';
+
+        size_t      contentLength = 0;
+        const char *clHeader      = strstr((const char *)pBuf, "Content-Length: ");
+        if (clHeader == nullptr) { clHeader = strstr((const char *)pBuf, "content-length: "); }
+        if (clHeader != nullptr) { contentLength = (size_t)atoi(clHeader + 16); }
+        pBuf[headerEnd] = saved;
+
+        if (headerEnd + contentLength > bufSize) {
+            CLogger::Get()->Write(FromHttpDaemon,
+                                  LogWarning,
+                                  "Content-Length too large: %u (max %u)",
+                                  (unsigned)contentLength,
+                                  (unsigned)maxContentSize_);
+            delete[] pBuf;
+            delete socket_;
+            socket_ = nullptr;
+            return;
+        }
+
+        size_t bodyReceived = totalRecv - headerEnd;
+        while (bodyReceived < contentLength) {
+            if (totalRecv >= bufSize) {
+                break;
+            }
+            size_t spaceLeft = bufSize - totalRecv;
+            if (spaceLeft == 0) {
+                CLogger::Get()->Write(
+                    FromHttpDaemon,
+                    LogWarning,
+                    "Buffer full before body complete: bufSize=%u contentLength=%u",
+                    (unsigned)bufSize,
+                    (unsigned)contentLength);
+                break;
+            }
+            size_t remaining = contentLength - bodyReceived;
+            size_t toRead    = remaining < spaceLeft ? remaining : spaceLeft;
+            int    n         = socket_->Receive((char *)pBuf + totalRecv, (unsigned)toRead, 0);
+            if (n <= 0) {
+                CLogger::Get()->Write(FromHttpDaemon,
+                                      LogWarning,
+                                      "Receive failed waiting for body: got=%u need=%u",
+                                      (unsigned)bodyReceived,
+                                      (unsigned)contentLength);
+                break;
+            }
+            totalRecv += (size_t)n;
+            bodyReceived += (size_t)n;
+        }
+    }
+
+    pBuf[totalRecv] = '\0';
+
     HttpRequest    request;
     ResponseStatus status = HttpCodec::ParseRequest(pBuf, totalRecv, request);
     if (status != ResponseStatus::OK) {
@@ -300,9 +380,9 @@ void HttpDaemon::Worker(void)
     CString header;
     HttpCodec::SerializeResponse(response, header);
 
-    if (socket_->Send(header.c_str(), header.GetLength(), MSG_DONTWAIT) < 0) {
+    ssize_t sent = socket_->Send(header.c_str(), header.GetLength(), MSG_DONTWAIT);
+    if (sent < 0) {
         CLogger::Get()->Write(FromHttpDaemon, LogError, "Cannot send response header");
-
         delete[] pBuf;
         delete socket_;
         socket_ = nullptr;
