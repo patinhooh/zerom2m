@@ -47,8 +47,9 @@ struct SystemConfig {
 
     struct {
         CString hostname;
-        bool clean_db_on_boot;
-        u8 p2p_task;
+        bool    clean_db_on_boot;
+        bool    log_stats;
+        u8      p2p_task;
     } system;
 
     SystemConfig()
@@ -71,9 +72,10 @@ struct SystemConfig {
         cse.cse_id        = "/zerom2m";
         cse.sp_id         = "zerom2m.example.com";
 
-        system.hostname = "zerom2m";
+        system.hostname         = "zerom2m";
         system.clean_db_on_boot = false;
-        system.p2p_task = 0;
+        system.log_stats        = false;
+        system.p2p_task         = 0;
     }
 };
 

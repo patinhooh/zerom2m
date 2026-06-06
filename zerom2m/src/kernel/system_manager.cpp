@@ -17,6 +17,8 @@
 #include <zerom2m/tasks/http_server.h>
 #include <zerom2m/tasks/light_example.h>
 #include <zerom2m/tasks/switch_example.h>
+#include <zerom2m/tasks/idle_task.h>
+#include <zerom2m/tasks/stats_task.h>
 
 namespace zerom2m::kernel
 {
@@ -52,9 +54,19 @@ ShutdownMode SystemManager::Run()
 
     networkManager_.DumpStatus();
 
+    if (config_.system.log_stats) {
+        CLogger::Get()->Write(FromSystemManager, LogNotice, "System stats logging enabled");
+
+        // Start system monitoring tasks.
+        SystemStats stats_;
+        auto* idleTask = new IdleMonitorTask(stats_);
+        auto* statsTask = new StatsTask(scheduler_, stats_);
+    }
+
     StartServices();
 
     CLogger::Get()->Write(FromSystemManager, LogNotice, "All services started");
+
 
     while (shutdownRequest_ == ShutdownMode::None) {
         scheduler_.MsSleep(100);

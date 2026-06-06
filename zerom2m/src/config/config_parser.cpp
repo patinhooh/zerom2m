@@ -135,6 +135,8 @@ void ConfigParser::ParseLine(const char *section, char *line)
         if (strcmp(key, "hostname") == 0) config_.system.hostname = value;
         else if (strcmp(key, "clean_db_on_boot") == 0)
             config_.system.clean_db_on_boot = ParseBool(value);
+        else if (strcmp(key, "log_stats") == 0)
+            config_.system.log_stats = ParseBool(value);
         else if (strcmp(key, "p2p_task") == 0) config_.system.p2p_task = (u8)atoi(value);
         else logger_.Write(FromConfigParser, LogWarning, "Unknown system config key: '%s'", key);
     }
