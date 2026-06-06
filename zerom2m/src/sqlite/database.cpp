@@ -91,7 +91,7 @@ Database::Database() {}
 
 Database::~Database() { Close(); }
 
-bool Database::Open(const char *path, CString &err)
+bool Database::Open(const char *path, CString cseRI, CString &err)
 {
     CLogger::Get()->Write("database", LogNotice, "Opening DB at path: %s", path);
 
@@ -123,6 +123,9 @@ bool Database::Open(const char *path, CString &err)
     sqlite3_exec(db_, "PRAGMA page_size = 4096;", nullptr, nullptr, nullptr);
     sqlite3_exec(db_, "PRAGMA synchronous = FULL;", nullptr, nullptr, nullptr);
     sqlite3_exec(db_, "PRAGMA temp_store = MEMORY;", nullptr, nullptr, nullptr);
+
+    // Store cseRI for later use.
+    cseRI_ = cseRI;
     return true;
 }
 
@@ -145,7 +148,8 @@ bool Database::InitSchema()
 
     rc = sqlite3_exec(db_, kResourceIdSequenceTable, nullptr, nullptr, &zErr);
     if (rc != SQLITE_OK) {
-        CLogger::Get()->Write("database", LogError, "Failed to create resources id sequence table: %s", zErr);
+        CLogger::Get()->Write(
+            "database", LogError, "Failed to create resources id sequence table: %s", zErr);
         sqlite3_free(zErr);
         return false;
     }
@@ -1540,8 +1544,7 @@ bool Database::LoadOldestChild(const CString &target,
 bool Database::GetCSEBase(CSEBase &out, CString &err)
 {
     PrimitiveContent pc;
-    // FIXME: hard coded ... cse_id - /
-    if (!LoadPrimitiveContentByTarget("zerom2m", pc, err)) return false;
+    if (!LoadPrimitiveContentByTarget(cseRI_, pc, err)) return false;
     if (auto c = pc.GetIf<CSEBase>()) {
         out = *c;
         return true;

@@ -27,7 +27,7 @@ public:
     Database();
     ~Database();
 
-    bool Open(const char *path, CString &err);
+    bool Open(const char *path, CString cseRI, CString &err);
     void Close();
 
     bool InitSchema();
@@ -69,6 +69,7 @@ public:
 
 private:
     sqlite3 *db_ = nullptr;
+    CString  cseRI_;
 
     // helpers
     static CString VecToPacked(const Vector<CString> &v);
