@@ -175,11 +175,11 @@ void LightExample::Run()
     auto     switchIP   = CIPAddress(ip);
     u16      switchPort = 0;
 
-    // assert(ip[0] != 0 && "Set IP for the light example");
-    // assert(switchPort != 0 && "Set port for the light example");
+    assert(ip[0] != 0 && "Set IP for the light example");
+    assert(switchPort != 0 && "Set port for the light example");
 
-    // // Blocks until subscription is created
-    // SendSubscription(sub, subParent, switchIP, switchPort);
+    // Blocks until subscription is created
+    SendSubscription(sub, subParent, switchIP, switchPort);
 
     // Run loop
     while (true) {
