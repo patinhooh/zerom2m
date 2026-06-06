@@ -12,13 +12,15 @@
 ## Project Overview
 
 ZeroM2M is a bare-metal oneM2M resource server designed to run directly on the Raspberry Pi Zero 2 W hardware platform without requiring a general-purpose operating system.  
-The project implements a functional HTTP-based oneM2M stack with priority given to the development of POST and GET operations.  
+The project implements a functional HTTP-based oneM2M stack and supports true peer-to-peer communication between nodes: each device runs its own oneM2M CSE, publishes resources locally, and subscribes directly to resources on peer nodes, no shared or external CSE required.  
+Priority was given to the development of POST and GET operations. So not Delete, Update, or Discovery operations are currently implemented.  
 Supports the following core oneM2M resources:
 
+- CSEBase
 - AE (Application Entity)
 - CNT (Container)
-- CI (Content Instance)
-- Subscription resources
+- CIN (Content Instance)
+- SUB (Subscription)
 
 ## Hardware
 
@@ -96,6 +98,7 @@ Copy the example file to `boot/config.txt` and edit the options as needed.
 
 - Building the project: [docs/building.md](docs/building.md)
 - Example workflows: [docs/workflow.md](docs/workflow.md)
+- P2P Examples: [docs/p2p_examples.md](docs/p2p_examples.md)
 - QEMU setup: [docs/qemu.md](docs/qemu.md)
 
 ## Third-Party Components

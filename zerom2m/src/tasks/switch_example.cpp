@@ -184,24 +184,13 @@ void SwitchExample::Run()
 
     // Run loop
     while (true) {
-        CLogger::Get()->Write("switch", LogNotice, "Loop start");
-
         state_ = !state_;
-
-        CLogger::Get()->Write("switch", LogNotice, "Before CreateContentInstance");
 
         ci.content = state_ ? "ON" : "OFF";
         CreateContentInstance(ci, cinParent_);
 
-        CLogger::Get()->Write("switch", LogNotice, "After CreateContentInstance");
-
         scheduler_->MsSleep(3000);
-
-        CLogger::Get()->Write("switch", LogNotice, "Before Yield");
-
         scheduler_->Yield();
-
-        CLogger::Get()->Write("switch", LogNotice, "After Yield");
     }
 }
 
