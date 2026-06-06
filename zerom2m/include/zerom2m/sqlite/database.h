@@ -32,6 +32,8 @@ public:
 
     bool InitSchema();
 
+    bool GenerateResourceId(CString& outId, CString& err);
+
     // Save a primitive content (resource) into DB. Uses ri as primary key.
     bool SavePrimitiveContent(const PrimitiveContent &pc, CString &err);
     bool SaveCSE(const CSEBase &cse, CString &err);

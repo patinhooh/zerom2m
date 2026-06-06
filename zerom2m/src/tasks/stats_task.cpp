@@ -10,6 +10,7 @@ StatsTask::StatsTask(CScheduler &scheduler, SystemStats &stats)
     , scheduler_(scheduler)
     , stats_(stats)
 {
+    SetName("stats");
 }
 
 void StatsTask::Run()

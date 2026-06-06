@@ -59,8 +59,8 @@ ShutdownMode SystemManager::Run()
 
         // Start system monitoring tasks.
         SystemStats stats_;
-        auto* idleTask = new IdleMonitorTask(stats_);
-        auto* statsTask = new StatsTask(scheduler_, stats_);
+        new IdleMonitorTask(stats_);
+        new StatsTask(scheduler_, stats_);
     }
 
     StartServices();

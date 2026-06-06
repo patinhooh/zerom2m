@@ -5,6 +5,7 @@ IdleMonitorTask::IdleMonitorTask(SystemStats& stats)
     : CTask()
     , stats_(stats)
 {
+    SetName("idle_monitor");
 }
 
 void IdleMonitorTask::Run()

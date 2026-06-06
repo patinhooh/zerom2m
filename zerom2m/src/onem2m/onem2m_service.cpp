@@ -497,7 +497,12 @@ bool IsAllowedForContainer(const RequestPrimitive &request, Database &db, const 
 CString OneM2MService::GetId()
 {
     CString id;
-    id.Format("C%u", nextResourceId_++);
+    CString saveErr;
+    if (!db_.GenerateResourceId(id, saveErr)) {
+        CLogger::Get()->Write(
+            "onem2m_service", LogError, "Failed to generate resource ID: %s", saveErr.c_str());
+        return CString();
+    }
     return id;
 }
 

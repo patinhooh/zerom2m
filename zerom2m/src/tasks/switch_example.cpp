@@ -39,7 +39,7 @@ SwitchExample::SwitchExample(CScheduler     *scheduler,
     , state_(initialState)
 {
     // Setting task name
-    SetName("SwitchExample");
+    SetName("switch_example");
 
     // Create AE resource for this switch example
     AE ae;
