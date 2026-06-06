@@ -1,3 +1,4 @@
 [submodule "third_party/circle"]
 	path = third_party/circle
-	url = https://github.com/rsta2/circle
+	url = https://github.com/patinhooh/circle
+	branch = fix-connect-blocking
