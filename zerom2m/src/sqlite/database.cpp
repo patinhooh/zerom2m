@@ -17,6 +17,15 @@
 using namespace zerom2m::sqlite;
 using namespace zerom2m::onem2m::types;
 
+static const char *kResourceIdSequenceTable = "CREATE TABLE IF NOT EXISTS resource_id_sequence ( "
+                                              "    next_id INTEGER NOT NULL "
+                                              "); "
+                                              "INSERT INTO resource_id_sequence(next_id) "
+                                              "SELECT 1 "
+                                              "WHERE NOT EXISTS ( "
+                                              "    SELECT 1 FROM resource_id_sequence "
+                                              ");";
+
 static const char *kCreateResources = "CREATE TABLE IF NOT EXISTS resources ("
                                       "ri TEXT PRIMARY KEY,"
                                       "rn TEXT,"
@@ -82,7 +91,7 @@ Database::Database() {}
 
 Database::~Database() { Close(); }
 
-bool Database::Open(const char *path, CString &err)
+bool Database::Open(const char *path, CString cseRI, CString &err)
 {
     CLogger::Get()->Write("database", LogNotice, "Opening DB at path: %s", path);
 
@@ -114,6 +123,9 @@ bool Database::Open(const char *path, CString &err)
     sqlite3_exec(db_, "PRAGMA page_size = 4096;", nullptr, nullptr, nullptr);
     sqlite3_exec(db_, "PRAGMA synchronous = FULL;", nullptr, nullptr, nullptr);
     sqlite3_exec(db_, "PRAGMA temp_store = MEMORY;", nullptr, nullptr, nullptr);
+
+    // Store cseRI for later use.
+    cseRI_ = cseRI;
     return true;
 }
 
@@ -133,6 +145,14 @@ bool Database::InitSchema()
     }
     char *zErr = nullptr;
     int   rc;
+
+    rc = sqlite3_exec(db_, kResourceIdSequenceTable, nullptr, nullptr, &zErr);
+    if (rc != SQLITE_OK) {
+        CLogger::Get()->Write(
+            "database", LogError, "Failed to create resources id sequence table: %s", zErr);
+        sqlite3_free(zErr);
+        return false;
+    }
     rc = sqlite3_exec(db_, kCreateResources, nullptr, nullptr, &zErr);
     if (rc != SQLITE_OK) {
         CLogger::Get()->Write("database", LogError, "Failed to create resources table: %s", zErr);
@@ -171,6 +191,43 @@ bool Database::InitSchema()
         sqlite3_free(zErr);
         return false;
     }
+    return true;
+}
+
+bool Database::GenerateResourceId(CString &outId, CString &err)
+{
+    sqlite3_exec(db_, "BEGIN IMMEDIATE;", nullptr, nullptr, nullptr);
+
+    sqlite3_stmt *stmt = nullptr;
+
+    int rc = sqlite3_prepare_v2(db_,
+                                "UPDATE resource_id_sequence "
+                                "SET next_id = next_id + 1 "
+                                "RETURNING next_id - 1;",
+                                -1,
+                                &stmt,
+                                nullptr);
+
+    if (rc != SQLITE_OK) {
+        err = sqlite3_errmsg(db_);
+        return false;
+    }
+
+    rc = sqlite3_step(stmt);
+
+    if (rc != SQLITE_ROW) {
+        sqlite3_finalize(stmt);
+        err = "Failed to generate ID";
+        sqlite3_exec(db_, "ROLLBACK;", nullptr, nullptr, nullptr);
+        return false;
+    }
+
+    int id = sqlite3_column_int(stmt, 0);
+
+    sqlite3_finalize(stmt);
+    sqlite3_exec(db_, "COMMIT;", nullptr, nullptr, nullptr);
+
+    outId.Format("C%u", id);
     return true;
 }
 
@@ -1487,8 +1544,7 @@ bool Database::LoadOldestChild(const CString &target,
 bool Database::GetCSEBase(CSEBase &out, CString &err)
 {
     PrimitiveContent pc;
-    // FIXME: hard coded ... cse_id - /
-    if (!LoadPrimitiveContentByTarget("zerom2m", pc, err)) return false;
+    if (!LoadPrimitiveContentByTarget(cseRI_, pc, err)) return false;
     if (auto c = pc.GetIf<CSEBase>()) {
         out = *c;
         return true;

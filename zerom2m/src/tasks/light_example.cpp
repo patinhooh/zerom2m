@@ -40,7 +40,7 @@ LightExample::LightExample(CScheduler     *scheduler,
     , state_(initialState)
 {
     // Setting task name
-    SetName("LightExample");
+    SetName("light_example");
 
     // Create AE resource for this light example
     AE ae;

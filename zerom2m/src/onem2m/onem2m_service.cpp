@@ -497,7 +497,12 @@ bool IsAllowedForContainer(const RequestPrimitive &request, Database &db, const 
 CString OneM2MService::GetId()
 {
     CString id;
-    id.Format("C%u", nextResourceId_++);
+    CString saveErr;
+    if (!db_.GenerateResourceId(id, saveErr)) {
+        CLogger::Get()->Write(
+            "onem2m_service", LogError, "Failed to generate resource ID: %s", saveErr.c_str());
+        return CString();
+    }
     return id;
 }
 
@@ -524,7 +529,7 @@ void OneM2MService::Initialize(const SystemConfig &config,
     // Open (or create) the SQLite database on the FAT32 volume.
     // The path uses the FatFs drive prefix set up in kernel.cpp.
     CString dbErr;
-    if (!db_.Open(DB_PATH, dbErr)) {
+    if (!db_.Open(DB_PATH, config.cse.resource_id, dbErr)) {
         CLogger::Get()->Write("onem2m_service", LogError, "DB open failed: %s", dbErr.c_str());
         return;
     }
@@ -1279,10 +1284,6 @@ ResponsePrimitive OneM2MService::CreateSubscription(const Subscription     &sub,
     const bool nctProvided = r.notificationContentType.has_value();
     if (!nctProvided) {
         r.notificationContentType = NotificationContentType::AllAttributes;
-        CLogger::Get()->Write("onem2m_service",
-                              LogNotice,
-                              "nct: %u",
-                              static_cast<unsigned>(r.notificationContentType.value()));
     }
 
     // // If the client did not provide an explicit `nct`, some event types are ambiguous or

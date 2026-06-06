@@ -27,10 +27,12 @@ public:
     Database();
     ~Database();
 
-    bool Open(const char *path, CString &err);
+    bool Open(const char *path, CString cseRI, CString &err);
     void Close();
 
     bool InitSchema();
+
+    bool GenerateResourceId(CString& outId, CString& err);
 
     // Save a primitive content (resource) into DB. Uses ri as primary key.
     bool SavePrimitiveContent(const PrimitiveContent &pc, CString &err);
@@ -67,6 +69,7 @@ public:
 
 private:
     sqlite3 *db_ = nullptr;
+    CString  cseRI_;
 
     // helpers
     static CString VecToPacked(const Vector<CString> &v);
